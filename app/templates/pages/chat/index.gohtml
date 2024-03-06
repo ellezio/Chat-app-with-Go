@@ -1,0 +1,19 @@
+{{ template "layout.start" . }}
+<div class="chat-window">
+  <div class="chat-window__msgs-box msgs-box">
+    <ul id="msgs-list" class="msgs-box__msgs-list msgs-list">
+      <li class="msgs-list__msg-box msgs-list__msg-box--other">Hi there!</li>
+    </ul>
+  </div>
+  <div class="chat-window__msg-bar msg-bar">
+    <form 
+      hx-post="/send-msg"
+      hx-target="#msgs-list"
+      hx-swap="beforeend"
+    >
+      <textarea name="msg" class="msg-bar__input--msg"></textarea>
+      <button type="submit" class="msg-bar__button--send">Send</button>
+    </form>
+  </div>
+</div>
+{{ template "layout.end" . }}
