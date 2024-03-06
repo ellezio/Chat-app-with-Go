@@ -12,10 +12,10 @@ func main() {
 	http.Handle("/styles/", publicFs)
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		tmpl := template.Must(template.ParseGlob("app/templates/pages/chat/*.gohtml"))
-		template.Must(tmpl.ParseGlob("app/templates/layouts/*.gohtml"))
+		tmpl := template.Must(template.ParseGlob("app/templates/pages/chat/*.tmpl"))
+		template.Must(tmpl.ParseGlob("app/templates/layouts/*.tmpl"))
 
-		tmpl.ExecuteTemplate(w, "index.gohtml", nil)
+		tmpl.ExecuteTemplate(w, "index.tmpl", nil)
 	})
 
 	http.HandleFunc("/send-msg", func(w http.ResponseWriter, r *http.Request) {
