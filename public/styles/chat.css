@@ -34,12 +34,12 @@
   max-width: 60%;
 }
 
-.msgs-list__msg-box--my {
+.msgs-list__msg-box--right {
   align-self: flex-end;
   border: 3px solid green;
 }
 
-.msgs-list__msg-box--other {
+.msgs-list__msg-box--left {
   align-self: flex-start;
   border: 3px solid yellow;
 }

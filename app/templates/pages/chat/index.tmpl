@@ -1,8 +1,10 @@
-{{ template "layout.start" . }}
+{{template "layout.start" .}}
 <div class="chat-window">
   <div class="chat-window__msgs-box msgs-box">
     <ul id="msgs-list" class="msgs-box__msgs-list msgs-list">
-      <li class="msgs-list__msg-box msgs-list__msg-box--other">Hi there!</li>
+      {{range .}}
+        <li class="msgs-list__msg-box msgs-list__msg-box--{{if (eq .Author "Me") -}} right {{- else -}} left {{- end}}">{{.Msg}}</li>
+      {{end}}
     </ul>
   </div>
   <div class="chat-window__msg-bar msg-bar">
@@ -16,4 +18,4 @@
     </form>
   </div>
 </div>
-{{ template "layout.end" . }}
+{{template "layout.end" .}}
