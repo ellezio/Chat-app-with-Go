@@ -1,9 +1,9 @@
-{{template "layout.start" .}}
+{{template "layout.start"}}
 <div class="chat-window">
   <div class="chat-window__msgs-box msgs-box">
     <ul id="msgs-list" class="msgs-box__msgs-list msgs-list">
-      {{range .}}
-        <li class="msgs-list__msg-box msgs-list__msg-box--{{if (eq .Author "Me") -}} right {{- else -}} left {{- end}}">{{.Msg}}</li>
+      {{range .Msgs}}
+        <li class="msgs-list__msg-box msgs-list__msg-box--{{if .IsMyMsg -}} right {{- else -}} left {{- end}}">{{.Msg}}</li>
       {{end}}
     </ul>
   </div>
@@ -12,10 +12,21 @@
       hx-post="/send-msg"
       hx-target="#msgs-list"
       hx-swap="beforeend"
+      hx-on::after-request="this.reset()"
     >
       <textarea name="msg" class="msg-bar__input--msg"></textarea>
       <button type="submit" class="msg-bar__button--send">Send</button>
     </form>
   </div>
 </div>
-{{template "layout.end" .}}
+{{if (not .IsLoggedIn)}}
+  <div id="modal" class="modal-backdrop">
+    <div  class="modal">
+      <form hx-post="/login" hx-target="#modal" hx-swap="outerHTML">
+        name: <input name="username" />
+        <button type="submit">Login</button>
+      </form>
+    </div>
+  </div>
+{{end}}
+{{template "layout.end"}}
