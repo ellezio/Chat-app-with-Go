@@ -1,0 +1,73 @@
+package components
+
+type Message struct {
+	Author  string
+	Content string
+}
+
+func getUserName(ctx context.Context) string {
+	if username, ok := ctx.Value("username").(string); ok {
+		return username
+	}
+	return ""
+}
+
+templ MessageBox(msg Message) {
+	if msg.Author == getUserName(ctx) {
+		<li class="msgs-list__msg-box msgs-list__msg-box--right">{ msg.Content }</li>
+	} else {
+		<li class="msgs-list__msg-box msgs-list__msg-box--left">{ msg.Content }</li>
+	}
+}
+
+templ ChatWindow(msgs []Message) {
+	<div class="chat-window">
+		<div class="chat-window__msgs-box msgs-box">
+			<ul id="msgs-list" class="msgs-box__msgs-list msgs-list">
+				for _, msg := range msgs {
+					@MessageBox(msg)
+				}
+			</ul>
+		</div>
+		<div class="chat-window__msg-bar msg-bar">
+			<form
+				hx-post="/send-msg"
+				hx-target="#msgs-list"
+				hx-swap="beforeend"
+				hx-on::after-request="this.reset()"
+			>
+				<textarea name="msg" class="msg-bar__input--msg"></textarea>
+				<button type="submit" class="msg-bar__button--send">Send</button>
+			</form>
+		</div>
+	</div>
+}
+
+templ Page(msgs []Message) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<link href="/styles/containers.css" rel="stylesheet"/>
+			<link href="/styles/chat.css" rel="stylesheet"/>
+			<script src="/scripts/htmx-1.9.10.min.js"></script>
+			<title>Chat page</title>
+		</head>
+		<body style="margin: 0px;">
+			<div class="main-wrapper">
+				@ChatWindow(msgs)
+			</div>
+			if getUserName(ctx) == "" {
+				<div id="modal" class="modal-backdrop">
+					<div class="modal">
+						<form hx-post="/login" hx-target="#modal" hx-swap="outerHTML">
+							name: <input name="username"/>
+							<button type="submit">Login</button>
+						</form>
+					</div>
+				</div>
+			}
+		</body>
+	</html>
+}
