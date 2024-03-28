@@ -20,21 +20,34 @@ templ MessageBox(msg Message) {
 	}
 }
 
+templ MessagesList(msgs []Message, oob bool) {
+	<ul
+		id="msgs-list"
+		if oob {
+			hx-swap-oob="beforeend"
+		} else {
+			class="msgs-box__msgs-list msgs-list"
+		}
+	>
+		for _, msg := range msgs {
+			@MessageBox(msg)
+		}
+	</ul>
+}
+
 templ ChatWindow(msgs []Message) {
-	<div class="chat-window">
+	<div
+		class="chat-window"
+		hx-ext="ws"
+		ws-connect="/chatroom"
+	>
 		<div class="chat-window__msgs-box msgs-box">
-			<ul id="msgs-list" class="msgs-box__msgs-list msgs-list">
-				for _, msg := range msgs {
-					@MessageBox(msg)
-				}
-			</ul>
+			@MessagesList(msgs, false)
 		</div>
 		<div class="chat-window__msg-bar msg-bar">
 			<form
-				hx-post="/send-msg"
-				hx-target="#msgs-list"
-				hx-swap="beforeend"
-				hx-on::after-request="this.reset()"
+				ws-send
+				hx-on="htmx:wsAfterSend: if (event.detail.elt === this) this.reset()"
 			>
 				<textarea name="msg" class="msg-bar__input--msg"></textarea>
 				<button type="submit" class="msg-bar__button--send">Send</button>
@@ -52,6 +65,7 @@ templ Page(msgs []Message) {
 			<link href="/styles/containers.css" rel="stylesheet"/>
 			<link href="/styles/chat.css" rel="stylesheet"/>
 			<script src="/scripts/htmx-1.9.10.min.js"></script>
+			<script src="https://unpkg.com/htmx.org@1.9.11/dist/ext/ws.js"></script>
 			<title>Chat page</title>
 		</head>
 		<body style="margin: 0px;">

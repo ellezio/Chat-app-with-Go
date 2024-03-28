@@ -17,11 +17,10 @@ func main() {
 	chatHandler := handlers.NewChatHandler(&msgs)
 
 	http.HandleFunc("/", chatHandler.Page)
-	http.HandleFunc("/send-msg", chatHandler.SendMessage)
+	http.HandleFunc("/chatroom", chatHandler.Chatroom)
 	http.HandleFunc("/login", chatHandler.Login)
 
 	fmt.Println("Start listening on :3000")
-
 	if err := http.ListenAndServe(":3000", nil); err != nil {
 		fmt.Println(err)
 	}
