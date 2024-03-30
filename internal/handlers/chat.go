@@ -2,13 +2,14 @@ package handlers
 
 import (
 	"bytes"
-	"chatting-app/components"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"github.com/pawellendzion/Chat-app-with-Go/internal/components"
+	"github.com/pawellendzion/Chat-app-with-Go/internal/services"
 )
 
 type Client struct {
@@ -17,18 +18,18 @@ type Client struct {
 }
 
 type ChatHandler struct {
-	msgs      *[]components.Message
-	upgrader  websocket.Upgrader
-	clients   map[*Client]bool
-	broadcast chan components.Message
+	chatService services.ChatService
+	upgrader    websocket.Upgrader
+	clients     map[*Client]bool
+	broadcast   chan components.Message
 }
 
-func NewChatHandler(msgs *[]components.Message) *ChatHandler {
+func NewChatHandler(cs services.ChatService) *ChatHandler {
 	h := &ChatHandler{
-		msgs:      msgs,
-		upgrader:  websocket.Upgrader{},
-		clients:   make(map[*Client]bool),
-		broadcast: make(chan components.Message),
+		chatService: cs,
+		upgrader:    websocket.Upgrader{},
+		clients:     make(map[*Client]bool),
+		broadcast:   make(chan components.Message),
 	}
 
 	go func() {
@@ -60,7 +61,7 @@ func (h *ChatHandler) Page(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := context.WithValue(r.Context(), "username", username)
-	components.Page(*h.msgs).Render(ctx, w)
+	components.Page(h.chatService.GetMessages()).Render(ctx, w)
 }
 
 func (h *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +118,7 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 			Content: payload.Msg,
 		}
 
-		*h.msgs = append(*h.msgs, msg)
+		h.chatService.SaveMessage(msg)
 		h.broadcast <- msg
 	}
 
