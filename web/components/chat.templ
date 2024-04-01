@@ -1,9 +1,6 @@
 package components
 
-type Message struct {
-	Author  string
-	Content string
-}
+import "github.com/pawellendzion/Chat-app-with-Go/internal/models"
 
 func getUserName(ctx context.Context) string {
 	if username, ok := ctx.Value("username").(string); ok {
@@ -12,7 +9,7 @@ func getUserName(ctx context.Context) string {
 	return ""
 }
 
-templ MessageBox(msg Message) {
+templ MessageBox(msg models.Message) {
 	if msg.Author == getUserName(ctx) {
 		<li class="msgs-list__msg-box msgs-list__msg-box--right">{ msg.Content }</li>
 	} else {
@@ -20,7 +17,7 @@ templ MessageBox(msg Message) {
 	}
 }
 
-templ MessagesList(msgs []Message, oob bool) {
+templ MessagesList(msgs []models.Message, oob bool) {
 	<ul
 		id="msgs-list"
 		if oob {
@@ -35,7 +32,7 @@ templ MessagesList(msgs []Message, oob bool) {
 	</ul>
 }
 
-templ ChatWindow(msgs []Message) {
+templ ChatWindow(msgs []models.Message) {
 	<div
 		class="chat-window"
 		hx-ext="ws"
@@ -47,7 +44,7 @@ templ ChatWindow(msgs []Message) {
 		<div class="chat-window__msg-bar msg-bar">
 			<form
 				ws-send
-				hx-on="htmx:wsAfterSend: if (event.detail.elt === this) this.reset()"
+				hx-on::ws-after-send="if (event.detail.elt === this) this.reset()"
 			>
 				<textarea name="msg" class="msg-bar__input--msg"></textarea>
 				<button type="submit" class="msg-bar__button--send">Send</button>
@@ -56,7 +53,7 @@ templ ChatWindow(msgs []Message) {
 	</div>
 }
 
-templ Page(msgs []Message) {
+templ Page(msgs []models.Message) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>

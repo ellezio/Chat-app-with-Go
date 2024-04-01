@@ -1,21 +1,49 @@
 package services
 
-import "github.com/pawellendzion/Chat-app-with-Go/internal/components"
+import (
+	"database/sql"
+	"fmt"
 
-func NewChatService() *ChatService {
+	"github.com/pawellendzion/Chat-app-with-Go/internal/models"
+)
+
+func NewChatService(db *sql.DB) *ChatService {
 	return &ChatService{
-		msgs: &[]components.Message{},
+		db: db,
 	}
 }
 
 type ChatService struct {
-	msgs *[]components.Message
+	db *sql.DB
 }
 
-func (s ChatService) GetMessages() []components.Message {
-	return *s.msgs
+func (s ChatService) GetMessages() []models.Message {
+	var msgs []models.Message
+	rows, err := s.db.Query("SELECT * FROM messages")
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		for rows.Next() {
+			var msg models.Message
+			if err := rows.Scan(&msg.ID, &msg.Author, &msg.Content); err != nil {
+				fmt.Println(err)
+				break
+			}
+			msgs = append(msgs, msg)
+		}
+
+		if err := rows.Err(); err != nil {
+			fmt.Println(err)
+		}
+	}
+
+	return msgs
 }
 
-func (s ChatService) SaveMessage(msg components.Message) {
-	*s.msgs = append(*s.msgs, msg)
+func (s ChatService) SaveMessage(msg models.Message) {
+	_, err := s.db.Exec("INSERT INTO messages VALUES (NULL, ?, ?)", msg.Author, msg.Content)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 }

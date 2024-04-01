@@ -8,8 +8,9 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/pawellendzion/Chat-app-with-Go/internal/components"
+	"github.com/pawellendzion/Chat-app-with-Go/internal/models"
 	"github.com/pawellendzion/Chat-app-with-Go/internal/services"
+	"github.com/pawellendzion/Chat-app-with-Go/web/components"
 )
 
 type Client struct {
@@ -21,7 +22,7 @@ type ChatHandler struct {
 	chatService services.ChatService
 	upgrader    websocket.Upgrader
 	clients     map[*Client]bool
-	broadcast   chan components.Message
+	broadcast   chan models.Message
 }
 
 func NewChatHandler(cs services.ChatService) *ChatHandler {
@@ -29,7 +30,7 @@ func NewChatHandler(cs services.ChatService) *ChatHandler {
 		chatService: cs,
 		upgrader:    websocket.Upgrader{},
 		clients:     make(map[*Client]bool),
-		broadcast:   make(chan components.Message),
+		broadcast:   make(chan models.Message),
 	}
 
 	go func() {
@@ -41,7 +42,7 @@ func NewChatHandler(cs services.ChatService) *ChatHandler {
 
 				var html bytes.Buffer
 				components.
-					MessagesList([]components.Message{msg}, true).
+					MessagesList([]models.Message{msg}, true).
 					Render(ctx, &html)
 
 				if err := client.conn.WriteMessage(websocket.TextMessage, html.Bytes()); err != nil {
@@ -96,6 +97,8 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	client := &Client{username, conn}
 	h.clients[client] = true
 
+	fmt.Printf("%s Connected\r\n", username)
+
 	for {
 		var payload struct {
 			Msg string `json:"msg"`
@@ -113,7 +116,7 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		msg := components.Message{
+		msg := models.Message{
 			Author:  username,
 			Content: payload.Msg,
 		}

@@ -10,10 +10,7 @@ import "context"
 import "io"
 import "bytes"
 
-type Message struct {
-	Author  string
-	Content string
-}
+import "github.com/pawellendzion/Chat-app-with-Go/internal/models"
 
 func getUserName(ctx context.Context) string {
 	if username, ok := ctx.Value("username").(string); ok {
@@ -22,7 +19,7 @@ func getUserName(ctx context.Context) string {
 	return ""
 }
 
-func MessageBox(msg Message) templ.Component {
+func MessageBox(msg models.Message) templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, templ_7745c5c3_W io.Writer) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templ_7745c5c3_W.(*bytes.Buffer)
 		if !templ_7745c5c3_IsBuffer {
@@ -43,7 +40,7 @@ func MessageBox(msg Message) templ.Component {
 			var templ_7745c5c3_Var2 string
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/components/chat.templ`, Line: 17, Col: 72}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 14, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 			if templ_7745c5c3_Err != nil {
@@ -61,7 +58,7 @@ func MessageBox(msg Message) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/components/chat.templ`, Line: 19, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 16, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -79,7 +76,7 @@ func MessageBox(msg Message) templ.Component {
 	})
 }
 
-func MessagesList(msgs []Message, oob bool) templ.Component {
+func MessagesList(msgs []models.Message, oob bool) templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, templ_7745c5c3_W io.Writer) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templ_7745c5c3_W.(*bytes.Buffer)
 		if !templ_7745c5c3_IsBuffer {
@@ -128,7 +125,7 @@ func MessagesList(msgs []Message, oob bool) templ.Component {
 	})
 }
 
-func ChatWindow(msgs []Message) templ.Component {
+func ChatWindow(msgs []models.Message) templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, templ_7745c5c3_W io.Writer) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templ_7745c5c3_W.(*bytes.Buffer)
 		if !templ_7745c5c3_IsBuffer {
@@ -149,7 +146,7 @@ func ChatWindow(msgs []Message) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</div><div class=\"chat-window__msg-bar msg-bar\"><form ws-send hx-on=\"htmx:wsAfterSend: if (event.detail.elt === this) this.reset()\"><textarea name=\"msg\" class=\"msg-bar__input--msg\"></textarea> <button type=\"submit\" class=\"msg-bar__button--send\">Send</button></form></div></div>")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</div><div class=\"chat-window__msg-bar msg-bar\"><form ws-send hx-on::ws-after-send=\"if (event.detail.elt === this) this.reset()\"><textarea name=\"msg\" class=\"msg-bar__input--msg\"></textarea> <button type=\"submit\" class=\"msg-bar__button--send\">Send</button></form></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -160,7 +157,7 @@ func ChatWindow(msgs []Message) templ.Component {
 	})
 }
 
-func Page(msgs []Message) templ.Component {
+func Page(msgs []models.Message) templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, templ_7745c5c3_W io.Writer) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templ_7745c5c3_W.(*bytes.Buffer)
 		if !templ_7745c5c3_IsBuffer {
