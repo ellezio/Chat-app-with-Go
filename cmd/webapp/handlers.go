@@ -1,4 +1,4 @@
-package handlers
+package main
 
 import (
 	"bytes"
@@ -25,7 +25,7 @@ type ChatHandler struct {
 	broadcast   chan models.Message
 }
 
-func NewChatHandler(cs services.ChatService) *ChatHandler {
+func newChatHandler(cs services.ChatService) *ChatHandler {
 	h := &ChatHandler{
 		chatService: cs,
 		upgrader:    websocket.Upgrader{},
