@@ -25,7 +25,14 @@ func NewDB() *sql.DB {
 	}
 	fmt.Println("Connected")
 
-	_, err = db.Exec("CREATE TABLE messages(id INTEGER PRIMARY KEY AUTOINCREMENT, author VARCHAR(255), content TEXT)")
+	_, err = db.Exec(`
+		CREATE TABLE messages(
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			author VARCHAR(255),
+			content TEXT,
+			message_type INTEGER
+		)`)
+
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -10,9 +10,12 @@ import (
 func routs() http.Handler {
 	mux := http.NewServeMux()
 
-	publicFs := http.FileServer(http.Dir("web/assets"))
-	mux.Handle("/js/", publicFs)
-	mux.Handle("/css/", publicFs)
+	assetsDir := http.FileServer(http.Dir("web/assets"))
+	mux.Handle("/js/", assetsDir)
+	mux.Handle("/css/", assetsDir)
+
+	filesDir := http.FileServer(http.Dir("web/files"))
+	mux.Handle("/files/", http.StripPrefix("/files/", filesDir))
 
 	db := database.NewDB()
 	chatService := services.NewChatService(db)
@@ -21,6 +24,7 @@ func routs() http.Handler {
 	mux.HandleFunc("/", chatHandler.Page)
 	mux.HandleFunc("/chatroom", chatHandler.Chatroom)
 	mux.HandleFunc("/login", chatHandler.Login)
+	mux.HandleFunc("/uploadfile", chatHandler.UploadFile)
 
 	return mux
 }

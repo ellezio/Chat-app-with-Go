@@ -11,7 +11,6 @@
 }
 
 .msgs-box {
-  display: flex;
   overflow-y: auto;
 }
 
@@ -49,9 +48,13 @@
   padding: 1rem 0rem 0.5rem;
 }
 
-.msg-bar > form {
+.msg-bar > div, .msg-bar > div > form {
   display: flex;
   gap: 1rem;
+} 
+
+.msg-bar > div > form {
+  flex: 1;
 }
 
 .msg-bar__input--msg {

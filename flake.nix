@@ -19,6 +19,7 @@
             gopls
             templ
             sqlite
+            htmx-lsp
           ];
         };
       }

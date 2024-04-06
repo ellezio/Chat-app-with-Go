@@ -32,42 +32,57 @@ func MessageBox(msg models.Message) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<li")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
 		if msg.Author == getUserName(ctx) {
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<li class=\"msgs-list__msg-box msgs-list__msg-box--right\">")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" class=\"msgs-list__msg-box msgs-list__msg-box--right\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" class=\"msgs-list__msg-box msgs-list__msg-box--left\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if msg.Type == models.FileMessage {
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<img src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var2 string
-			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Content)
+			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs("/files/" + msg.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 14, Col: 72}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 21, Col: 37}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</li>")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\" width=\"100%\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<li class=\"msgs-list__msg-box msgs-list__msg-box--left\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(msg.Content)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 16, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 23, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</li>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</li>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
 		}
 		if !templ_7745c5c3_IsBuffer {
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteTo(templ_7745c5c3_W)
@@ -125,7 +140,7 @@ func MessagesList(msgs []models.Message, oob bool) templ.Component {
 	})
 }
 
-func ChatWindow(msgs []models.Message) templ.Component {
+func SendBar() templ.Component {
 	return templ.ComponentFunc(func(ctx context.Context, templ_7745c5c3_W io.Writer) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templ_7745c5c3_W.(*bytes.Buffer)
 		if !templ_7745c5c3_IsBuffer {
@@ -138,7 +153,31 @@ func ChatWindow(msgs []models.Message) templ.Component {
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div class=\"chat-window\" hx-ext=\"ws\" ws-connect=\"/chatroom\"><div class=\"chat-window__msgs-box msgs-box\">")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div><input type=\"file\" name=\"file\" hx-post=\"/uploadfile\" hx-encoding=\"multipart/form-data\" hx-on::after-request=\"this.value = &#39;&#39;\"><form ws-send hx-on::ws-after-send=\"this.reset()\"><textarea name=\"msg\" class=\"msg-bar__input--msg\"></textarea> <button type=\"submit\" class=\"msg-bar__button--send\">Send</button></form></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if !templ_7745c5c3_IsBuffer {
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteTo(templ_7745c5c3_W)
+		}
+		return templ_7745c5c3_Err
+	})
+}
+
+func ChatWindow(msgs []models.Message) templ.Component {
+	return templ.ComponentFunc(func(ctx context.Context, templ_7745c5c3_W io.Writer) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templ_7745c5c3_W.(*bytes.Buffer)
+		if !templ_7745c5c3_IsBuffer {
+			templ_7745c5c3_Buffer = templ.GetBuffer()
+			defer templ.ReleaseBuffer(templ_7745c5c3_Buffer)
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var6 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var6 == nil {
+			templ_7745c5c3_Var6 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div class=\"chat-window\" hx-ext=\"ws\" ws-connect=\"/chatroom\"><div id=\"scroller\" class=\"chat-window__msgs-box msgs-box\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -146,7 +185,23 @@ func ChatWindow(msgs []models.Message) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</div><div class=\"chat-window__msg-bar msg-bar\"><form ws-send hx-on::ws-after-send=\"if (event.detail.elt === this) this.reset()\"><textarea name=\"msg\" class=\"msg-bar__input--msg\"></textarea> <button type=\"submit\" class=\"msg-bar__button--send\">Send</button></form></div></div>")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div id=\"anchor\"></div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = msgScroller().Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div class=\"chat-window__msg-bar msg-bar\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = SendBar().Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("</div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -165,9 +220,9 @@ func Page(msgs []models.Message) templ.Component {
 			defer templ.ReleaseBuffer(templ_7745c5c3_Buffer)
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var6 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var6 == nil {
-			templ_7745c5c3_Var6 = templ.NopComponent
+		templ_7745c5c3_Var7 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var7 == nil {
+			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link href=\"/css/containers.css\" rel=\"stylesheet\"><link href=\"/css/chat.css\" rel=\"stylesheet\"><script src=\"/js/htmx-1.9.11.min.js\"></script><script src=\"/js/htmx-ws-1.9.11.js\"></script><title>Chat page</title></head><body style=\"margin: 0px;\"><div class=\"main-wrapper\">")
@@ -197,4 +252,37 @@ func Page(msgs []models.Message) templ.Component {
 		}
 		return templ_7745c5c3_Err
 	})
+}
+
+func msgScroller() templ.ComponentScript {
+	return templ.ComponentScript{
+		Name: `__templ_msgScroller_7d17`,
+		Function: `function __templ_msgScroller_7d17(){const elt = document.getElementById("scroller")
+	const msgsList = document.getElementById("msgs-list")
+	const sharedState = { 
+		anchored: true,
+		autoScroll: false,
+	}
+
+	elt.addEventListener("scroll", (evt) => {
+		if (!sharedState.autoScroll) {
+			sharedState.anchored = evt.target.scrollTop >= evt.target.scrollTopMax - 10
+		}
+		sharedState.autoScroll = false
+	})
+
+	const observer = new ResizeObserver((entries) => {
+		for (const entry of entries) {
+			if (sharedState.anchored) {
+				elt.scrollTop = elt.scrollTopMax
+				sharedState.autoScroll = true
+			}
+		}
+	})
+
+	observer.observe(msgsList)
+}`,
+		Call:       templ.SafeScript(`__templ_msgScroller_7d17`),
+		CallInline: templ.SafeScriptInline(`__templ_msgScroller_7d17`),
+	}
 }

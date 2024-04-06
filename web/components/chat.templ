@@ -10,11 +10,19 @@ func getUserName(ctx context.Context) string {
 }
 
 templ MessageBox(msg models.Message) {
-	if msg.Author == getUserName(ctx) {
-		<li class="msgs-list__msg-box msgs-list__msg-box--right">{ msg.Content }</li>
-	} else {
-		<li class="msgs-list__msg-box msgs-list__msg-box--left">{ msg.Content }</li>
-	}
+	<li
+		if msg.Author == getUserName(ctx) {
+			class="msgs-list__msg-box msgs-list__msg-box--right"
+		} else {
+			class="msgs-list__msg-box msgs-list__msg-box--left"
+		}
+	>
+		if msg.Type == models.FileMessage {
+			<img src={ "/files/" + msg.Content } width="100%"/>
+		} else {
+			{ msg.Content }
+		}
+	</li>
 }
 
 templ MessagesList(msgs []models.Message, oob bool) {
@@ -32,23 +40,34 @@ templ MessagesList(msgs []models.Message, oob bool) {
 	</ul>
 }
 
+templ SendBar() {
+	<div>
+		<input
+			type="file"
+			name="file"
+			hx-post="/uploadfile"
+			hx-encoding="multipart/form-data"
+			hx-on::after-request="this.value = ''"
+		/>
+		<form ws-send hx-on::ws-after-send="this.reset()">
+			<textarea name="msg" class="msg-bar__input--msg"></textarea>
+			<button type="submit" class="msg-bar__button--send">Send</button>
+		</form>
+	</div>
+}
+
 templ ChatWindow(msgs []models.Message) {
-	<div
-		class="chat-window"
-		hx-ext="ws"
-		ws-connect="/chatroom"
-	>
-		<div class="chat-window__msgs-box msgs-box">
+	<div class="chat-window" hx-ext="ws" ws-connect="/chatroom">
+		<div
+			id="scroller"
+			class="chat-window__msgs-box msgs-box"
+		>
 			@MessagesList(msgs, false)
+			<div id="anchor"></div>
 		</div>
+		@msgScroller()
 		<div class="chat-window__msg-bar msg-bar">
-			<form
-				ws-send
-				hx-on::ws-after-send="if (event.detail.elt === this) this.reset()"
-			>
-				<textarea name="msg" class="msg-bar__input--msg"></textarea>
-				<button type="submit" class="msg-bar__button--send">Send</button>
-			</form>
+			@SendBar()
 		</div>
 	</div>
 }
@@ -81,4 +100,31 @@ templ Page(msgs []models.Message) {
 			}
 		</body>
 	</html>
+}
+
+script msgScroller() {
+	const elt = document.getElementById("scroller")
+	const msgsList = document.getElementById("msgs-list")
+	const sharedState = { 
+		anchored: true,
+		autoScroll: false,
+	}
+
+	elt.addEventListener("scroll", (evt) => {
+		if (!sharedState.autoScroll) {
+			sharedState.anchored = evt.target.scrollTop >= evt.target.scrollTopMax - 10
+		}
+		sharedState.autoScroll = false
+	})
+
+	const observer = new ResizeObserver((entries) => {
+		for (const entry of entries) {
+			if (sharedState.anchored) {
+				elt.scrollTop = elt.scrollTopMax
+				sharedState.autoScroll = true
+			}
+		}
+	})
+
+	observer.observe(msgsList)
 }

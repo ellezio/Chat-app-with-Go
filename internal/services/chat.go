@@ -25,7 +25,7 @@ func (s ChatService) GetMessages() []models.Message {
 	} else {
 		for rows.Next() {
 			var msg models.Message
-			if err := rows.Scan(&msg.ID, &msg.Author, &msg.Content); err != nil {
+			if err := rows.Scan(&msg.ID, &msg.Author, &msg.Content, &msg.Type); err != nil {
 				fmt.Println(err)
 				break
 			}
@@ -41,7 +41,7 @@ func (s ChatService) GetMessages() []models.Message {
 }
 
 func (s ChatService) SaveMessage(msg models.Message) {
-	_, err := s.db.Exec("INSERT INTO messages VALUES (NULL, ?, ?)", msg.Author, msg.Content)
+	_, err := s.db.Exec("INSERT INTO messages VALUES (NULL, ?, ?, ?)", msg.Author, msg.Content, msg.Type)
 	if err != nil {
 		fmt.Println(err)
 		return

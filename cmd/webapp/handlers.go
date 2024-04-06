@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/websocket"
 	"github.com/pawellendzion/Chat-app-with-Go/internal/models"
@@ -126,4 +128,40 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	delete(h.clients, client)
+}
+
+func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(1024)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	file, fileHeader, err := r.FormFile("file")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
+
+	dstFile, err := os.Create("web/files/" + fileHeader.Filename)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer dstFile.Close()
+
+	_, err = io.Copy(dstFile, file)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	msg := models.Message{
+		Author:  "",
+		Type:    models.FileMessage,
+		Content: fileHeader.Filename,
+	}
+
+	h.chatService.SaveMessage(msg)
+	h.broadcast <- msg
 }
