@@ -131,7 +131,15 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(1024)
+	cookie, err := r.Cookie("username")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	username := cookie.Value
+
+	err = r.ParseMultipartForm(1024)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -157,7 +165,7 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := models.Message{
-		Author:  "",
+		Author:  username,
 		Type:    models.FileMessage,
 		Content: fileHeader.Filename,
 	}
