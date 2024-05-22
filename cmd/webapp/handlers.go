@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -21,14 +22,16 @@ type Client struct {
 }
 
 type ChatHandler struct {
+	logger      *log.Logger
 	chatService services.ChatService
 	upgrader    websocket.Upgrader
 	clients     map[*Client]bool
 	broadcast   chan models.Message
 }
 
-func newChatHandler(cs services.ChatService) *ChatHandler {
+func newChatHandler(logger *log.Logger, cs services.ChatService) *ChatHandler {
 	h := &ChatHandler{
+		logger:      logger,
 		chatService: cs,
 		upgrader:    websocket.Upgrader{},
 		clients:     make(map[*Client]bool),
@@ -69,17 +72,23 @@ func (h *ChatHandler) Page(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		fmt.Println(err)
+		h.logger.Fatal(err)
 	}
 
-	cookie := http.Cookie{
-		Name:   "username",
-		Value:  r.PostForm.Get("username"),
-		Path:   "/",
-		MaxAge: 3600,
-	}
+	if username := r.PostForm.Get("username"); username == "" {
+		components.ErrorMsg("username", "Fill the field").Render(r.Context(), w)
+	} else {
+		cookie := http.Cookie{
+			Name:   "username",
+			Value:  username,
+			Path:   "/",
+			MaxAge: 3600,
+		}
 
-	http.SetCookie(w, &cookie)
+		http.SetCookie(w, &cookie)
+
+		w.Write([]byte("<div id='modal' hx-swap-oob='delete'></div>"))
+	}
 }
 
 func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {

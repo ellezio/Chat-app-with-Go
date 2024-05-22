@@ -1,7 +1,9 @@
 package main
 
 import (
+	"log"
 	"net/http"
+	"os"
 
 	"github.com/pawellendzion/Chat-app-with-Go/internal/database"
 	"github.com/pawellendzion/Chat-app-with-Go/internal/services"
@@ -18,8 +20,10 @@ func routs() http.Handler {
 	mux.Handle("/files/", http.StripPrefix("/files/", filesDir))
 
 	db := database.NewDB()
+	logger := log.New(os.Stdout, "INFO:", log.LstdFlags)
+
 	chatService := services.NewChatService(db)
-	chatHandler := newChatHandler(*chatService)
+	chatHandler := newChatHandler(logger, *chatService)
 
 	mux.HandleFunc("/", chatHandler.Page)
 	mux.HandleFunc("/chatroom", chatHandler.Chatroom)

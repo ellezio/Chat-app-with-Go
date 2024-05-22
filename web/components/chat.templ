@@ -80,8 +80,8 @@ templ Page(msgs []models.Message) {
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<link href="/css/containers.css" rel="stylesheet"/>
 			<link href="/css/chat.css" rel="stylesheet"/>
-			<script src="/js/htmx-1.9.11.min.js"></script>
-			<script src="/js/htmx-ws-1.9.11.js"></script>
+			<script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
+			<script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"></script>
 			<title>Chat page</title>
 		</head>
 		<body style="margin: 0px;">
@@ -91,8 +91,19 @@ templ Page(msgs []models.Message) {
 			if getUserName(ctx) == "" {
 				<div id="modal" class="modal-backdrop">
 					<div class="modal">
-						<form hx-post="/login" hx-target="#modal" hx-swap="outerHTML">
-							name: <input name="username"/>
+						<form
+							id="login-form"
+							hx-post="/login"
+							hx-swap="none"
+						>
+							<div>
+								<label>name:</label>
+								<input
+									id="username"
+									name="username"
+								/>
+								<div id="username-error-msg"></div>
+							</div>
 							<button type="submit">Login</button>
 						</form>
 					</div>
@@ -100,6 +111,13 @@ templ Page(msgs []models.Message) {
 			}
 		</body>
 	</html>
+}
+
+templ ErrorMsg(fieldId string, msg string) {
+	<div
+		hx-swap-oob="innerHTML"
+		id={ fieldId + `-error-msg` }
+	>{ msg }</div>
 }
 
 script msgScroller() {
