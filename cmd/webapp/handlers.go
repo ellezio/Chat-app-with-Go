@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -51,7 +50,7 @@ func newChatHandler(logger *log.Logger, cs services.ChatService) *ChatHandler {
 					Render(ctx, &html)
 
 				if err := client.conn.WriteMessage(websocket.TextMessage, html.Bytes()); err != nil {
-					fmt.Println(err)
+					h.logger.Println(err)
 				}
 			}
 		}
@@ -95,20 +94,20 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	var username string
 	cookie, err := r.Cookie("username")
 	if err != nil {
-		fmt.Println(err)
+		h.logger.Println(err)
 		return
 	}
 	username = cookie.Value
 
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Println(err)
+		h.logger.Println(err)
 	}
 
 	client := &Client{username, conn}
 	h.clients[client] = true
 
-	fmt.Printf("%s Connected\r\n", username)
+	h.logger.Printf("%s Connected\r\n", username)
 
 	for {
 		var payload struct {
@@ -117,13 +116,13 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 		_, p, err := conn.ReadMessage()
 		if err != nil {
-			fmt.Println(err)
+			h.logger.Println(err)
 			break
 		}
 
 		err = json.Unmarshal(p, &payload)
 		if err != nil {
-			fmt.Println(err)
+			h.logger.Println(err)
 			continue
 		}
 
@@ -142,7 +141,8 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("username")
 	if err != nil {
-		fmt.Println(err)
+		h.logger.Println(err)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
@@ -150,27 +150,30 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	err = r.ParseMultipartForm(1024)
 	if err != nil {
-		fmt.Println(err)
+		h.logger.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		// TODO htmx response
+		return
 	}
 
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
-		fmt.Println(err)
+		h.logger.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		// TODO htmx response
 		return
 	}
 	defer file.Close()
 
 	dstFile, err := os.Create("web/files/" + fileHeader.Filename)
 	if err != nil {
-		fmt.Println(err)
-		return
+		h.logger.Fatal(err)
 	}
 	defer dstFile.Close()
 
 	_, err = io.Copy(dstFile, file)
 	if err != nil {
-		fmt.Println(err)
-		return
+		h.logger.Fatal(err)
 	}
 
 	msg := models.Message{

@@ -20,6 +20,7 @@ func routs() http.Handler {
 	mux.Handle("/files/", http.StripPrefix("/files/", filesDir))
 
 	db := database.NewDB()
+	// TODO debug logger
 	logger := log.New(os.Stdout, "INFO:", log.LstdFlags)
 
 	chatService := services.NewChatService(db)
