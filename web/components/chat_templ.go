@@ -37,12 +37,12 @@ func MessageBox(msg models.Message) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if msg.Author == getUserName(ctx) {
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" class=\"msgs-list__msg-box msgs-list__msg-box--right\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" class=\"mt-4 max-w-full self-end border-2 border-green-500 bg-slate-400\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" class=\"msgs-list__msg-box msgs-list__msg-box--left\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" class=\"mt-4 max-w-full self-start border-2 border-yellow-500 bg-slate-400\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -65,7 +65,7 @@ func MessageBox(msg models.Message) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\" width=\"100%\">")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\" class=\"w-auto h-auto max-w-full max-h-96\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -114,7 +114,7 @@ func MessagesList(msgs []models.Message, oob bool) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" class=\"msgs-box__msgs-list msgs-list\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(" class=\"grow list-none p-0 flex flex-col justify-end\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -153,7 +153,7 @@ func SendBar() templ.Component {
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div><input type=\"file\" name=\"file\" hx-post=\"/uploadfile\" hx-encoding=\"multipart/form-data\" hx-on::after-request=\"this.value = &#39;&#39;\"><form ws-send hx-on::ws-after-send=\"this.reset()\"><textarea name=\"msg\" class=\"msg-bar__input--msg\"></textarea> <button type=\"submit\" class=\"msg-bar__button--send\">Send</button></form></div>")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div class=\"flex gap-4\"><input type=\"file\" name=\"file\" hx-post=\"/uploadfile\" hx-encoding=\"multipart/form-data\" hx-on::after-request=\"this.value = &#39;&#39;\"><form ws-send hx-on::ws-after-send=\"this.reset()\" class=\"flex gap-4 grow\"><textarea name=\"msg\" class=\"grow resize-none\"></textarea> <button type=\"submit\" class=\"\">Send</button></form></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -177,7 +177,7 @@ func ChatWindow(msgs []models.Message) templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div class=\"chat-window\" hx-ext=\"ws\" ws-connect=\"/chatroom\"><div id=\"scroller\" class=\"chat-window__msgs-box msgs-box\">")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div class=\"flex flex-col w-100 p-2\" hx-ext=\"ws\" ws-connect=\"/chatroom\"><div id=\"scroller\" class=\"grow overflow-auto\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -193,7 +193,7 @@ func ChatWindow(msgs []models.Message) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div class=\"chat-window__msg-bar msg-bar\">")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div class=\"h-8 py-4\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -225,7 +225,7 @@ func Page(msgs []models.Message) templ.Component {
 			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link href=\"/css/containers.css\" rel=\"stylesheet\"><link href=\"/css/chat.css\" rel=\"stylesheet\"><script src=\"https://unpkg.com/htmx.org@1.9.12\" integrity=\"sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2\" crossorigin=\"anonymous\"></script><script src=\"https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js\"></script><title>Chat page</title></head><body style=\"margin: 0px;\"><div class=\"main-wrapper\">")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<!doctype html><html lang=\"en\"><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link href=\"/css/containers.css\" rel=\"stylesheet\"><link href=\"/css/chat.css\" rel=\"stylesheet\"><link href=\"/css/output.css\" rel=\"stylesheet\"><script src=\"https://unpkg.com/htmx.org@1.9.12\" integrity=\"sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2\" crossorigin=\"anonymous\"></script><script src=\"https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js\"></script><title>Chat page</title></head><body class=\"bg-slate-950 m-0\"><div class=\"max-w-screen-md mx-auto bg-slate-900 h-screen flex\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -238,7 +238,7 @@ func Page(msgs []models.Message) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if getUserName(ctx) == "" {
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div id=\"modal\" class=\"modal-backdrop\"><div class=\"modal\"><form id=\"login-form\" hx-post=\"/login\" hx-swap=\"none\"><div><label>name:</label> <input id=\"username\" name=\"username\"><div id=\"username-error-msg\"></div></div><button type=\"submit\">Login</button></form></div></div>")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div id=\"modal\" class=\"flex justify-center items-center backdrop-blur-sm fixed left-0 top-0 w-screen h-screen\"><div class=\"bg-slate-700 border-2 border-slate-500 rounded-md p-4 w-fit h-fit\"><form id=\"login-form\" hx-post=\"/login\" hx-swap=\"none\"><div><label class=\"font-semibold text-slate-300\">name:</label> <input id=\"username\" name=\"username\" class=\"border-2 rounded-md border-slate-800 outline-none px-1 bg-slate-300\" autocomplete=\"off\"><div id=\"username-error-msg\"></div></div><button type=\"submit\" class=\"w-full bg-slate-400 rounded-md content-center py-1 text-slate-700 font-bold mt-2\">Login</button></form></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -267,27 +267,27 @@ func ErrorMsg(fieldId string, msg string) templ.Component {
 			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div hx-swap-oob=\"innerHTML\" id=\"")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("<div hx-swap-oob=\"outerHTML\" id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(fieldId + `-error-msg`)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 119, Col: 29}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 122, Col: 29}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\">")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString("\" class=\"text-red-700 font-semibold mt-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 120, Col: 7}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `web/components/chat.templ`, Line: 124, Col: 7}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -306,8 +306,8 @@ func ErrorMsg(fieldId string, msg string) templ.Component {
 
 func msgScroller() templ.ComponentScript {
 	return templ.ComponentScript{
-		Name: `__templ_msgScroller_7d17`,
-		Function: `function __templ_msgScroller_7d17(){const elt = document.getElementById("scroller")
+		Name: `__templ_msgScroller_5224`,
+		Function: `function __templ_msgScroller_5224(){const elt = document.getElementById("scroller")
 	const msgsList = document.getElementById("msgs-list")
 	const sharedState = { 
 		anchored: true,
@@ -316,7 +316,7 @@ func msgScroller() templ.ComponentScript {
 
 	elt.addEventListener("scroll", (evt) => {
 		if (!sharedState.autoScroll) {
-			sharedState.anchored = evt.target.scrollTop >= evt.target.scrollTopMax - 10
+			sharedState.anchored = evt.target.scrollTop >= evt.target.scrollHeight - evt.target.offsetHeight - 10
 		}
 		sharedState.autoScroll = false
 	})
@@ -324,15 +324,18 @@ func msgScroller() templ.ComponentScript {
 	const observer = new ResizeObserver((entries) => {
 		for (const entry of entries) {
 			if (sharedState.anchored) {
-				elt.scrollTop = elt.scrollTopMax
+				elt.scrollTop = elt.scrollHeight - elt.offsetHeight
 				sharedState.autoScroll = true
+				console.log('scrollTop: ',elt.scrollTop)
+				console.log('scrollTopMax: ',elt.scrollTopMax)
 			}
 		}
+		console.log(sharedState)
 	})
 
 	observer.observe(msgsList)
 }`,
-		Call:       templ.SafeScript(`__templ_msgScroller_7d17`),
-		CallInline: templ.SafeScriptInline(`__templ_msgScroller_7d17`),
+		Call:       templ.SafeScript(`__templ_msgScroller_5224`),
+		CallInline: templ.SafeScriptInline(`__templ_msgScroller_5224`),
 	}
 }

@@ -20,6 +20,7 @@
             templ
             sqlite
             htmx-lsp
+            tailwindcss
           ];
         };
       }

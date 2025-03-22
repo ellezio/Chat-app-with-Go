@@ -12,13 +12,13 @@ func getUserName(ctx context.Context) string {
 templ MessageBox(msg models.Message) {
 	<li
 		if msg.Author == getUserName(ctx) {
-			class="msgs-list__msg-box msgs-list__msg-box--right"
+			class="mt-4 max-w-full self-end border-2 border-green-500 bg-slate-400"
 		} else {
-			class="msgs-list__msg-box msgs-list__msg-box--left"
+			class="mt-4 max-w-full self-start border-2 border-yellow-500 bg-slate-400"
 		}
 	>
 		if msg.Type == models.FileMessage {
-			<img src={ "/files/" + msg.Content } width="100%"/>
+			<img src={ "/files/" + msg.Content } class="w-auto h-auto max-w-full max-h-96"/>
 		} else {
 			{ msg.Content }
 		}
@@ -31,7 +31,7 @@ templ MessagesList(msgs []models.Message, oob bool) {
 		if oob {
 			hx-swap-oob="beforeend"
 		} else {
-			class="msgs-box__msgs-list msgs-list"
+			class="grow list-none p-0 flex flex-col justify-end"
 		}
 	>
 		for _, msg := range msgs {
@@ -41,7 +41,7 @@ templ MessagesList(msgs []models.Message, oob bool) {
 }
 
 templ SendBar() {
-	<div>
+	<div class="flex gap-4">
 		<input
 			type="file"
 			name="file"
@@ -49,24 +49,24 @@ templ SendBar() {
 			hx-encoding="multipart/form-data"
 			hx-on::after-request="this.value = ''"
 		/>
-		<form ws-send hx-on::ws-after-send="this.reset()">
-			<textarea name="msg" class="msg-bar__input--msg"></textarea>
-			<button type="submit" class="msg-bar__button--send">Send</button>
+		<form ws-send hx-on::ws-after-send="this.reset()" class="flex gap-4 grow">
+			<textarea name="msg" class="grow resize-none"></textarea>
+			<button type="submit" class="">Send</button>
 		</form>
 	</div>
 }
 
 templ ChatWindow(msgs []models.Message) {
-	<div class="chat-window" hx-ext="ws" ws-connect="/chatroom">
+	<div class="flex flex-col w-100 p-2" hx-ext="ws" ws-connect="/chatroom">
 		<div
 			id="scroller"
-			class="chat-window__msgs-box msgs-box"
+			class="grow overflow-auto"
 		>
 			@MessagesList(msgs, false)
 			<div id="anchor"></div>
 		</div>
 		@msgScroller()
-		<div class="chat-window__msg-bar msg-bar">
+		<div class="h-8 py-4">
 			@SendBar()
 		</div>
 	</div>
@@ -80,31 +80,34 @@ templ Page(msgs []models.Message) {
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 			<link href="/css/containers.css" rel="stylesheet"/>
 			<link href="/css/chat.css" rel="stylesheet"/>
+			<link href="/css/output.css" rel="stylesheet"/>
 			<script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
 			<script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"></script>
 			<title>Chat page</title>
 		</head>
-		<body style="margin: 0px;">
-			<div class="main-wrapper">
+		<body class="bg-slate-950 m-0">
+			<div class="max-w-screen-md mx-auto bg-slate-900 h-screen flex">
 				@ChatWindow(msgs)
 			</div>
 			if getUserName(ctx) == "" {
-				<div id="modal" class="modal-backdrop">
-					<div class="modal">
+				<div id="modal" class="flex justify-center items-center backdrop-blur-sm fixed left-0 top-0 w-screen h-screen">
+					<div class="bg-slate-700 border-2 border-slate-500 rounded-md p-4 w-fit h-fit">
 						<form
 							id="login-form"
 							hx-post="/login"
 							hx-swap="none"
 						>
 							<div>
-								<label>name:</label>
+								<label class="font-semibold text-slate-300">name:</label>
 								<input
 									id="username"
 									name="username"
+									class="border-2 rounded-md border-slate-800 outline-none px-1 bg-slate-300"
+									autocomplete="off"
 								/>
 								<div id="username-error-msg"></div>
 							</div>
-							<button type="submit">Login</button>
+							<button type="submit" class="w-full bg-slate-400 rounded-md content-center py-1 text-slate-700 font-bold mt-2">Login</button>
 						</form>
 					</div>
 				</div>
@@ -115,8 +118,9 @@ templ Page(msgs []models.Message) {
 
 templ ErrorMsg(fieldId string, msg string) {
 	<div
-		hx-swap-oob="innerHTML"
+		hx-swap-oob="outerHTML"
 		id={ fieldId + `-error-msg` }
+		class="text-red-700 font-semibold mt-1"
 	>{ msg }</div>
 }
 
@@ -130,7 +134,7 @@ script msgScroller() {
 
 	elt.addEventListener("scroll", (evt) => {
 		if (!sharedState.autoScroll) {
-			sharedState.anchored = evt.target.scrollTop >= evt.target.scrollTopMax - 10
+			sharedState.anchored = evt.target.scrollTop >= (evt.target.scrollHeight - evt.target.offsetHeight - 10)
 		}
 		sharedState.autoScroll = false
 	})
@@ -138,7 +142,7 @@ script msgScroller() {
 	const observer = new ResizeObserver((entries) => {
 		for (const entry of entries) {
 			if (sharedState.anchored) {
-				elt.scrollTop = elt.scrollTopMax
+				elt.scrollTop = elt.scrollHeight - elt.offsetHeight
 				sharedState.autoScroll = true
 			}
 		}
