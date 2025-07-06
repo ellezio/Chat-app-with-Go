@@ -1,6 +1,7 @@
 package components
 
 import "github.com/pawellendzion/Chat-app-with-Go/internal/models"
+import "context"
 
 func getUserName(ctx context.Context) string {
 	if username, ok := ctx.Value("username").(string); ok {

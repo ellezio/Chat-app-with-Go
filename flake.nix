@@ -20,7 +20,8 @@
             templ
             sqlite
             htmx-lsp
-            tailwindcss
+            tailwindcss_4
+            tailwindcss-language-server
           ];
         };
       }

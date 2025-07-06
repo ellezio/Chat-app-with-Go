@@ -1,3 +1,1 @@
-module.exports = {
-	content: ["./web/components/**/*.templ"],
-}
+// For lsp to work
