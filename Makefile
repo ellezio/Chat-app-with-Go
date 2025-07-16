@@ -5,7 +5,8 @@ TAILWIND_OUTPUT_CSS := web/assets/css/output.css
 
 all:
 	$(MAKE) templ_watch &
-	$(MAKE) tailwind_watch
+	$(MAKE) tailwind_watch &
+	$(MAKE) run
 
 run:
 	@go run ./cmd/webapp

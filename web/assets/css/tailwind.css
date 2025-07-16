@@ -1,3 +1,12 @@
 @import "tailwindcss";
 
 @source "../../components/**/*.templ";
+
+@theme {
+  /* --color-*: initial; */
+
+  --color-alpha: #36393f;
+  --color-beta: #2f3136;
+  --color-gamma: #40444b;
+  --color-delta: #484c52;
+}
