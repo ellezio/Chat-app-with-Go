@@ -17,8 +17,8 @@ import (
 )
 
 type Client struct {
-	username string
-	conn     *websocket.Conn
+	sessionID session.SessionID
+	conn      *websocket.Conn
 }
 
 type ChatHandler struct {
@@ -41,7 +41,7 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 			msg := <-h.broadcast
 
 			for client := range h.clients {
-				ctx := context.WithValue(context.Background(), "username", client.username)
+				ctx := session.Context(context.Background(), client.sessionID)
 
 				var html bytes.Buffer
 				components.
@@ -86,14 +86,15 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username := session.GetUsername(r.Context())
+	sesh := session.GetSession(r.Context())
+	username := sesh.Username
 
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 	}
 
-	client := &Client{username, conn}
+	client := &Client{sesh.ID, conn}
 	h.clients[client] = true
 
 	log.Printf("%s Connected\r\n", username)

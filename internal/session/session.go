@@ -43,18 +43,12 @@ func New(auth AuthData) *Session {
 	return nil
 }
 
-func getSessionByID(sID string) *Session {
+func GetSessionByID(sID SessionID) *Session {
 	mutex.RLock()
 	defer mutex.RUnlock()
 
-	id, err := uuid.Parse(sID)
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
-
-	if SessionID(id) != SessionID(uuid.Nil) {
-		if session, ok := sessions[SessionID(id)]; ok {
+	if sID != SessionID(uuid.Nil) {
+		if session, ok := sessions[sID]; ok {
 			return &session
 		}
 	}
@@ -99,15 +93,24 @@ func SetSessionCookie(w http.ResponseWriter, session *Session) {
 	http.SetCookie(w, &cookie)
 }
 
+func Context(ctx context.Context, sessionID SessionID) context.Context {
+	session := GetSessionByID(sessionID)
+	return context.WithValue(ctx, sessionContextKey, session)
+}
+
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var session *Session
+		ctx := r.Context()
 
 		if cookie, err := r.Cookie(string(sessionIDCookieKey)); err == nil {
-			session = getSessionByID(cookie.Value)
-		}
 
-		ctx := context.WithValue(r.Context(), sessionContextKey, session)
+			if sID, err := uuid.Parse(cookie.Value); err == nil {
+				ctx = Context(ctx, SessionID(sID))
+			} else {
+				log.Println(err)
+			}
+
+		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
