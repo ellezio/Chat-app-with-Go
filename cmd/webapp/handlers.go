@@ -9,10 +9,11 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/ellezio/Chat-app-with-Go/internal/models"
+	"github.com/ellezio/Chat-app-with-Go/internal/services"
+	"github.com/ellezio/Chat-app-with-Go/internal/session"
+	"github.com/ellezio/Chat-app-with-Go/web/components"
 	"github.com/gorilla/websocket"
-	"github.com/pawellendzion/Chat-app-with-Go/internal/models"
-	"github.com/pawellendzion/Chat-app-with-Go/internal/services"
-	"github.com/pawellendzion/Chat-app-with-Go/web/components"
 )
 
 type Client struct {
@@ -21,16 +22,14 @@ type Client struct {
 }
 
 type ChatHandler struct {
-	logger      *log.Logger
 	chatService services.ChatService
 	upgrader    websocket.Upgrader
 	clients     map[*Client]bool
 	broadcast   chan models.Message
 }
 
-func newChatHandler(logger *log.Logger, cs services.ChatService) *ChatHandler {
+func newChatHandler(cs services.ChatService) *ChatHandler {
 	h := &ChatHandler{
-		logger:      logger,
 		chatService: cs,
 		upgrader:    websocket.Upgrader{},
 		clients:     make(map[*Client]bool),
@@ -50,7 +49,7 @@ func newChatHandler(logger *log.Logger, cs services.ChatService) *ChatHandler {
 					Render(ctx, &html)
 
 				if err := client.conn.WriteMessage(websocket.TextMessage, html.Bytes()); err != nil {
-					h.logger.Println(err)
+					log.Println(err)
 				}
 			}
 		}
@@ -60,54 +59,44 @@ func newChatHandler(logger *log.Logger, cs services.ChatService) *ChatHandler {
 }
 
 func (h *ChatHandler) Page(w http.ResponseWriter, r *http.Request) {
-	username := ""
-	if cookie, err := r.Cookie("username"); err == nil {
-		username = cookie.Value
-	}
-
-	ctx := context.WithValue(r.Context(), "username", username)
-	components.Page(h.chatService.GetMessages()).Render(ctx, w)
+	components.Page(h.chatService.GetMessages()).Render(r.Context(), w)
 }
 
 func (h *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.logger.Fatal(err)
+		log.Fatal(err)
 	}
 
-	if username := r.PostForm.Get("username"); username == "" {
+	username := r.PostForm.Get("username")
+
+	if username == "" {
 		components.ErrorMsg("username", "Fill the field").Render(r.Context(), w)
-	} else {
-		cookie := http.Cookie{
-			Name:   "username",
-			Value:  username,
-			Path:   "/",
-			MaxAge: 3600,
-		}
-
-		http.SetCookie(w, &cookie)
-
-		w.Write([]byte("<div id='modal' hx-swap-oob='delete'></div>"))
+		return
 	}
+
+	authData := session.AuthData{Username: username}
+	sesh := session.New(authData)
+	session.SetSessionCookie(w, sesh)
+
+	w.Write([]byte("<div id='modal' hx-swap-oob='delete'></div>"))
 }
 
 func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
-	var username string
-	cookie, err := r.Cookie("username")
-	if err != nil {
-		h.logger.Println(err)
+	if !session.IsLoggedIn(r.Context()) {
 		return
 	}
-	username = cookie.Value
+
+	username := session.GetUsername(r.Context())
 
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		h.logger.Println(err)
+		log.Println(err)
 	}
 
 	client := &Client{username, conn}
 	h.clients[client] = true
 
-	h.logger.Printf("%s Connected\r\n", username)
+	log.Printf("%s Connected\r\n", username)
 
 	for {
 		var payload struct {
@@ -116,13 +105,13 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 		_, p, err := conn.ReadMessage()
 		if err != nil {
-			h.logger.Println(err)
+			log.Println(err)
 			break
 		}
 
 		err = json.Unmarshal(p, &payload)
 		if err != nil {
-			h.logger.Println(err)
+			log.Println(err)
 			continue
 		}
 
@@ -139,18 +128,16 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("username")
-	if err != nil {
-		h.logger.Println(err)
+	if !session.IsLoggedIn(r.Context()) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
-	username := cookie.Value
+	username := session.GetUsername(r.Context())
 
-	err = r.ParseMultipartForm(1024)
+	err := r.ParseMultipartForm(1024)
 	if err != nil {
-		h.logger.Println(err)
+		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		// TODO htmx response
 		return
@@ -158,7 +145,7 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
-		h.logger.Println(err)
+		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		// TODO htmx response
 		return
@@ -167,13 +154,13 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	dstFile, err := os.Create("web/files/" + fileHeader.Filename)
 	if err != nil {
-		h.logger.Fatal(err)
+		log.Fatal(err)
 	}
 	defer dstFile.Close()
 
 	_, err = io.Copy(dstFile, file)
 	if err != nil {
-		h.logger.Fatal(err)
+		log.Fatal(err)
 	}
 
 	msg := models.Message{

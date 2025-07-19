@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/pawellendzion/Chat-app-with-Go/internal/models"
+	"github.com/ellezio/Chat-app-with-Go/internal/models"
 )
 
 func NewChatService(db *sql.DB) *ChatService {

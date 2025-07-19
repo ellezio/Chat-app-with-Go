@@ -1,18 +1,11 @@
 package components
 
-import "github.com/pawellendzion/Chat-app-with-Go/internal/models"
-import "context"
-
-func getUserName(ctx context.Context) string {
-	if username, ok := ctx.Value("username").(string); ok {
-		return username
-	}
-	return ""
-}
+import "github.com/ellezio/Chat-app-with-Go/internal/models"
+import "github.com/ellezio/Chat-app-with-Go/internal/session"
 
 templ MessageBox(msg models.Message) {
 	<li
-		if msg.Author == getUserName(ctx) {
+		if msg.Author == session.GetUsername(ctx) {
 			class="mt-4 max-w-full self-end border-2 border-green-500 bg-slate-400"
 		} else {
 			class="mt-4 max-w-full self-start border-2 border-yellow-500 bg-slate-400"
@@ -88,7 +81,7 @@ templ Page(msgs []models.Message) {
 			<div class="max-w-screen-md mx-auto bg-gamma h-full flex">
 				@ChatWindow(msgs)
 			</div>
-			if getUserName(ctx) == "" {
+			if !session.IsLoggedIn(ctx) {
 				<div id="modal" class="flex justify-center items-center backdrop-blur-sm fixed left-0 top-0 w-screen h-screen">
 					<div class="bg-cyber-gray border-2 border-neon-pink rounded-md p-4 w-fit h-fit">
 						<form

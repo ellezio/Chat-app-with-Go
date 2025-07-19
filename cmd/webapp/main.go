@@ -6,12 +6,14 @@ import (
 )
 
 func main() {
+	addr := ":3000"
+
 	srv := &http.Server{
-		Addr:    ":3000",
+		Addr:    addr,
 		Handler: routs(),
 	}
 
-	fmt.Println("Start listening on :3000")
+	fmt.Printf("Start listening on %s\n", addr)
 	if err := srv.ListenAndServe(); err != nil {
 		fmt.Println(err)
 	}
