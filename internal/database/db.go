@@ -30,7 +30,9 @@ func NewDB() *sql.DB {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			author VARCHAR(255),
 			content TEXT,
-			message_type INTEGER
+			message_type INTEGER,
+			created_at DATETIME,
+			updated_at DATETIME
 		)`)
 
 	if err != nil {

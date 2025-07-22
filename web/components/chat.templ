@@ -1,25 +1,36 @@
 package components
 
-import "github.com/ellezio/Chat-app-with-Go/internal/models"
+import "github.com/ellezio/Chat-app-with-Go/internal/message"
 import "github.com/ellezio/Chat-app-with-Go/internal/session"
+import "time"
 
-templ MessageBox(msg models.Message) {
+templ MessageBox(msg message.Message) {
+	{{ isAuthor := msg.Author == session.GetUsername(ctx) }}
 	<li
-		if msg.Author == session.GetUsername(ctx) {
-			class="mt-4 max-w-full self-end border-2 border-green-500 bg-slate-400"
-		} else {
-			class="mt-4 max-w-full self-start border-2 border-yellow-500 bg-slate-400"
+		class={
+			"mt-4 max-w-full flex flex-col",
+			templ.KV("self-end items-end", isAuthor),
+			templ.KV("self-start items-start", !isAuthor),
 		}
 	>
-		if msg.Type == models.FileMessage {
-			<img src={ "/files/" + msg.Content } class="w-auto h-auto max-w-full max-h-96"/>
-		} else {
-			{ msg.Content }
-		}
+		<div
+			class={
+				"w-fit border-2 bg-slate-400",
+				templ.KV("border-green-500", isAuthor),
+				templ.KV("border-yellow-500", !isAuthor),
+			}
+		>
+			if msg.Type == message.ImageMessage {
+				<img src={ "/files/" + msg.Content } class="w-auto h-auto max-w-full max-h-96"/>
+			} else {
+				{ msg.Content }
+			}
+		</div>
+		<div>{ msg.Author } | { msg.CreatedAt.Format(time.DateTime) }</div>
 	</li>
 }
 
-templ MessagesList(msgs []models.Message, oob bool) {
+templ MessagesList(msgs []message.Message, oob bool) {
 	<ul
 		id="msgs-list"
 		if oob {
@@ -51,7 +62,7 @@ templ SendBar() {
 	</div>
 }
 
-templ ChatWindow(msgs []models.Message) {
+templ ChatWindow(msgs []message.Message) {
 	<div class="flex flex-col w-full" hx-ext="ws" ws-connect="/chatroom">
 		<div id="scroller" class="flex-1 p-2 overflow-auto">
 			@MessagesList(msgs, false)
@@ -64,7 +75,7 @@ templ ChatWindow(msgs []models.Message) {
 	</div>
 }
 
-templ Page(msgs []models.Message) {
+templ Page(msgs []message.Message) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/ellezio/Chat-app-with-Go/internal/models"
+	"github.com/ellezio/Chat-app-with-Go/internal/message"
 	"github.com/ellezio/Chat-app-with-Go/internal/services"
 	"github.com/ellezio/Chat-app-with-Go/internal/session"
 	"github.com/ellezio/Chat-app-with-Go/web/components"
@@ -25,7 +25,7 @@ type ChatHandler struct {
 	chatService services.ChatService
 	upgrader    websocket.Upgrader
 	clients     map[*Client]bool
-	broadcast   chan models.Message
+	broadcast   chan message.Message
 }
 
 func newChatHandler(cs services.ChatService) *ChatHandler {
@@ -33,7 +33,7 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 		chatService: cs,
 		upgrader:    websocket.Upgrader{},
 		clients:     make(map[*Client]bool),
-		broadcast:   make(chan models.Message),
+		broadcast:   make(chan message.Message),
 	}
 
 	go func() {
@@ -45,7 +45,7 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 
 				var html bytes.Buffer
 				components.
-					MessagesList([]models.Message{msg}, true).
+					MessagesList([]message.Message{msg}, true).
 					Render(ctx, &html)
 
 				if err := client.conn.WriteMessage(websocket.TextMessage, html.Bytes()); err != nil {
@@ -116,13 +116,14 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		msg := models.Message{
-			Author:  username,
-			Content: payload.Msg,
-		}
+		msg := message.New(
+			username,
+			payload.Msg,
+			message.TextMessage,
+		)
 
 		h.chatService.SaveMessage(msg)
-		h.broadcast <- msg
+		h.broadcast <- *msg
 	}
 
 	delete(h.clients, client)
@@ -164,12 +165,12 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
-	msg := models.Message{
-		Author:  username,
-		Type:    models.FileMessage,
-		Content: fileHeader.Filename,
-	}
+	msg := message.New(
+		username,
+		fileHeader.Filename,
+		message.ImageMessage,
+	)
 
 	h.chatService.SaveMessage(msg)
-	h.broadcast <- msg
+	h.broadcast <- *msg
 }
