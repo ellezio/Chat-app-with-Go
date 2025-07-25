@@ -1,7 +1,9 @@
+.PHONY: all run templ_watch tailwind_watch
+
 TAILWIND_INPUT_CSS := web/assets/css/tailwind.css
 TAILWIND_OUTPUT_CSS := web/assets/css/output.css
 
-.PHONY: all run templ_watch tailwind_watch
+MONGODB_URI ?= localhost:27017
 
 all:
 	$(MAKE) templ_watch &
@@ -9,7 +11,7 @@ all:
 	$(MAKE) run
 
 run:
-	@go run ./cmd/webapp
+	@MONGODB_URI=$(MONGODB_URI) go run ./cmd/webapp
 
 templ_watch:
 	@templ generate --watch

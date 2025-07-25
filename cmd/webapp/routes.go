@@ -24,12 +24,12 @@ func routs() http.Handler {
 	filesDir := http.FileServer(http.Dir("web/files"))
 	mux.Handle("/files/", http.StripPrefix("/files/", filesDir))
 
-	db := database.NewDB()
+	database.NewDB()
 
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.LstdFlags)
 
-	chatService := services.NewChatService(db)
+	chatService := services.NewChatService()
 	chatHandler := newChatHandler(*chatService)
 
 	mux.HandleFunc("/", chatHandler.Page)

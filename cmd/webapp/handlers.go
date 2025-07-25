@@ -9,12 +9,25 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/ellezio/Chat-app-with-Go/internal/database"
 	"github.com/ellezio/Chat-app-with-Go/internal/message"
 	"github.com/ellezio/Chat-app-with-Go/internal/services"
 	"github.com/ellezio/Chat-app-with-Go/internal/session"
 	"github.com/ellezio/Chat-app-with-Go/web/components"
 	"github.com/gorilla/websocket"
 )
+
+type ClientMessageType int
+
+const (
+	NewMessage ClientMessageType = iota
+	UpdateMessage
+)
+
+type ClientMessage struct {
+	Type ClientMessageType
+	Msg  message.Message
+}
 
 type Client struct {
 	sessionID session.SessionID
@@ -25,7 +38,7 @@ type ChatHandler struct {
 	chatService services.ChatService
 	upgrader    websocket.Upgrader
 	clients     map[*Client]bool
-	broadcast   chan message.Message
+	broadcast   chan ClientMessage
 }
 
 func newChatHandler(cs services.ChatService) *ChatHandler {
@@ -33,24 +46,61 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 		chatService: cs,
 		upgrader:    websocket.Upgrader{},
 		clients:     make(map[*Client]bool),
-		broadcast:   make(chan message.Message),
+		broadcast:   make(chan ClientMessage),
 	}
 
 	go func() {
 		for {
-			msg := <-h.broadcast
+			clientMsg := <-h.broadcast
+			msg := clientMsg.Msg
 
 			for client := range h.clients {
 				ctx := session.Context(context.Background(), client.sessionID)
 
 				var html bytes.Buffer
-				components.
-					MessagesList([]message.Message{msg}, true).
-					Render(ctx, &html)
+
+				switch clientMsg.Type {
+				case NewMessage:
+					components.
+						MessagesList([]message.Message{msg}, true).
+						Render(ctx, &html)
+
+				case UpdateMessage:
+					user := session.GetUsername(ctx)
+					if user != msg.Author {
+						continue
+					}
+
+					err := components.
+						MessageBox(clientMsg.Msg, true).
+						Render(ctx, &html)
+					if err != nil {
+						log.Println(err)
+					}
+				}
 
 				if err := client.conn.WriteMessage(websocket.TextMessage, html.Bytes()); err != nil {
 					log.Println(err)
 				}
+			}
+
+			if msg.Status == message.Sending {
+				go func(msg message.Message) {
+					err := database.UpdateStatus(msg.ID, message.Sent)
+					if err != nil {
+						log.Println(err)
+						msg.Status = message.Error
+					} else {
+						msg.Status = message.Sent
+					}
+
+					updateMsg := ClientMessage{
+						Type: UpdateMessage,
+						Msg:  msg,
+					}
+
+					h.broadcast <- updateMsg
+				}(msg)
 			}
 		}
 	}()
@@ -123,7 +173,13 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 		)
 
 		h.chatService.SaveMessage(msg)
-		h.broadcast <- *msg
+
+		clientMsg := ClientMessage{
+			Type: NewMessage,
+			Msg:  *msg,
+		}
+
+		h.broadcast <- clientMsg
 	}
 
 	delete(h.clients, client)
@@ -172,5 +228,11 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	)
 
 	h.chatService.SaveMessage(msg)
-	h.broadcast <- *msg
+
+	clientMsg := ClientMessage{
+		Type: NewMessage,
+		Msg:  *msg,
+	}
+
+	h.broadcast <- clientMsg
 }

@@ -18,7 +18,7 @@
             go
             gopls
             templ
-            sqlite
+            mongosh
             htmx-lsp
             tailwindcss_4
             tailwindcss-language-server
