@@ -37,6 +37,13 @@ func routs() http.Handler {
 	mux.HandleFunc("/login", chatHandler.Login)
 	mux.HandleFunc("/uploadfile", chatHandler.UploadFile)
 
+	mux.HandleFunc("GET /message", chatHandler.GetMessage)
+	mux.HandleFunc("GET /message/edit", chatHandler.GetMessageEdit)
+	mux.HandleFunc("POST /message/edit", chatHandler.PostMessageEdit)
+	mux.HandleFunc("POST /message/pin", chatHandler.MessagePin)
+	mux.HandleFunc("POST /message/hide/{doHide}", chatHandler.MessageHide)
+	mux.HandleFunc("POST /message/delete", chatHandler.MessageDelete)
+
 	mux.HandleFunc("/api/get-sessions", func(w http.ResponseWriter, r *http.Request) {
 		seshs := session.GetSessions()
 		data, err := json.Marshal(seshs)

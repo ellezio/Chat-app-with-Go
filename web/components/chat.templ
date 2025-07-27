@@ -3,9 +3,12 @@ package components
 import "github.com/ellezio/Chat-app-with-Go/internal/message"
 import "github.com/ellezio/Chat-app-with-Go/internal/session"
 import "time"
+import "slices"
 
-templ MessageBox(msg message.Message, oob bool) {
-	{{ isAuthor := msg.Author == session.GetUsername(ctx) }}
+templ MessageBox(msg message.Message, oob bool, edit bool) {
+	{{ AuthorName := session.GetUsername(ctx) }}
+	{{ isAuthor := msg.Author == AuthorName }}
+	{{ isHidden := slices.Contains(msg.HiddenFor, AuthorName) }}
 	<li
 		if oob {
 			hx-swap-oob="true"
@@ -17,18 +20,40 @@ templ MessageBox(msg message.Message, oob bool) {
 			templ.KV("self-start items-start", !isAuthor),
 		}
 	>
-		<div
-			class={
-				"w-fit border-2 bg-slate-400",
-				templ.KV("border-green-500", isAuthor),
-				templ.KV("border-yellow-500", !isAuthor),
-			}
-		>
-			if msg.Type == message.ImageMessage {
-				<img src={ "/files/" + msg.Content } class="w-auto h-auto max-w-full max-h-96"/>
-			} else {
-				{ msg.Content }
-			}
+		<div class="flex">
+			<div
+				id={ "ctx-menu-invoker-" + msg.ID.Hex() }
+				data-msg-id={ msg.ID.Hex() }
+				onclick="toggleContextMenu(event)"
+				class="px-2 cursor-pointer h-fit"
+			>:</div>
+			<div
+				class={
+					"w-fit border-2 bg-slate-400",
+					templ.KV("border-green-500", isAuthor),
+					templ.KV("border-yellow-500", !isAuthor),
+				}
+			>
+				if msg.Deleted {
+					Deleted message
+				} else if isHidden {
+					Hidden message
+				} else if msg.Type == message.ImageMessage {
+					<img src={ "/files/" + msg.Content } class="w-auto h-auto max-w-full max-h-96"/>
+				} else if edit {
+					<form
+						hx-post="/message/edit"
+						hx-target={ "#msg-id-" + msg.ID.Hex() }
+						hx-vals={ "{\"msg-id\": \"" + msg.ID.Hex() + "\"}" }
+					>
+						<textarea name="msg-content">{ msg.Content }</textarea>
+						<button type="button" hx-get="/message">Cancel</button>
+						<button type="submit">Update</button>
+					</form>
+				} else {
+					{ msg.Content }
+				}
+			</div>
 		</div>
 		<div>{ msg.Author } | { msg.CreatedAt.Format(time.DateTime) }</div>
 		if isAuthor {
@@ -47,7 +72,7 @@ templ MessagesList(msgs []message.Message, oob bool) {
 		}
 	>
 		for _, msg := range msgs {
-			@MessageBox(msg, false)
+			@MessageBox(msg, false, false)
 		}
 	</ul>
 }
@@ -71,7 +96,7 @@ templ SendBar() {
 
 templ ChatWindow(msgs []message.Message) {
 	<div class="flex flex-col w-full" hx-ext="ws" ws-connect="/chatroom">
-		<div id="scroller" class="flex-1 p-2 overflow-auto">
+		<div id="scroller" class="flex-1 p-2 overflow-y-auto">
 			@MessagesList(msgs, false)
 			<div id="anchor"></div>
 		</div>
@@ -95,7 +120,16 @@ templ Page(msgs []message.Message) {
 			<script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"></script>
 			<title>Chat page</title>
 		</head>
+		<script>
+			htmx.config.allowNestedOobSwaps=false;
+		</script>
 		<body class="bg-delta m-0 overflow-y-hidden h-screen">
+			@ctxMenuScripts()
+			@ContextMenusWrapper(false) {
+				for _, msg := range msgs {
+					@ContextMenu(msg, false)
+				}
+			}
 			<div class="max-w-screen-md mx-auto bg-gamma h-full flex">
 				@ChatWindow(msgs)
 			</div>
@@ -126,12 +160,99 @@ templ Page(msgs []message.Message) {
 	</html>
 }
 
+templ ContextMenusWrapper(oob bool) {
+	<div
+		id="ctxMenusWrapper"
+		onclick="toggleContextMenu()"
+		class="hidden absolute z-10 top-0 left-0 h-screen w-screen"
+		if oob {
+			hx-swap-oob="beforeend"
+		}
+	>
+		{ children... }
+	</div>
+}
+
+templ ContextMenu(msg message.Message, oob bool) {
+	{{ AuthorName := session.GetUsername(ctx) }}
+	{{ isAuthor := msg.Author == AuthorName }}
+	{{ isHidden := slices.Contains(msg.HiddenFor, AuthorName) }}
+	<ul
+		id={ "ctx-menu-" + msg.ID.Hex() }
+		data-msg-id={ msg.ID.Hex() }
+		class="ctx-menu hidden relative bg-alpha w-fit"
+		hx-vals={ "js:{'msg-id':'" + msg.ID.Hex() + "'}" }
+		onclick="toggleContextMenu()"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		if isAuthor && !isHidden && !msg.Deleted && msg.Type == message.TextMessage {
+			<li hx-swap="none" hx-get="/message/edit" hx-trigger="click">edit</li>
+		}
+		if true {
+			<li hx-swap="none" hx-post="/message/pin" hx-trigger="click">pin</li>
+		}
+		if isHidden {
+			<li hx-swap="none" hx-post="/message/hide/false" hx-trigger="click">show</li>
+		} else {
+			<li hx-swap="none" hx-post="/message/hide/true" hx-trigger="click">hide</li>
+		}
+		if isAuthor && !msg.Deleted {
+			<li hx-swap="none" hx-post="/message/delete" hx-trigger="click">delete</li>
+		}
+	</ul>
+}
+
 templ ErrorMsg(fieldId string, msg string) {
 	<div
 		hx-swap-oob="outerHTML"
 		id={ fieldId + `-error-msg` }
 		class="text-red-700 font-semibold mt-1"
 	>{ msg }</div>
+}
+
+templ ctxMenuScripts() {
+	<script>
+		function handleSetPosition(elm, relativeTo) {
+			const rect = relativeTo.getBoundingClientRect();
+
+			elm.style.top = (rect.top || rect.y) + "px";
+			elm.style.left = (rect.left || rect.x) + "px";
+		}
+
+		function toggleContextMenu(event) {
+			const ctxMenusWrapper = document.getElementById("ctxMenusWrapper");
+
+			const msgId = event?.target.getAttribute("data-msg-id");
+
+			if (!msgId) {
+				ctxMenusWrapper.classList.toggle("hidden", true);
+				document.querySelectorAll(".ctx-menu:not(.hidden)")?.forEach((ctxMenu) => {
+					ctxMenu.classList.toggle("hidden", true);
+				});
+
+				return;
+			}
+
+			const ctxMenu = document.getElementById(`ctx-menu-${msgId}`);
+
+			ctxMenusWrapper.classList.toggle("hidden", false);
+			ctxMenu.classList.toggle("hidden", false);
+
+			handleSetPosition(ctxMenu, event.target);
+		}
+
+		window.addEventListener("resize", () => {
+			const ctxMenu = document.querySelector(".ctx-menu:not(.hidden)");
+			if (!ctxMenu) return;
+
+			const msgId = ctxMenu.getAttribute("data-msg-id")
+			const invokedFrom = document.getElementById("ctx-menu-invoker-" + msgId);
+
+			handleSetPosition(ctxMenu, invokedFrom);
+		});
+	</script>
 }
 
 script msgScroller() {

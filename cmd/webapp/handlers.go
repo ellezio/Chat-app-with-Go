@@ -8,13 +8,16 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
+	"github.com/a-h/templ"
 	"github.com/ellezio/Chat-app-with-Go/internal/database"
 	"github.com/ellezio/Chat-app-with-Go/internal/message"
 	"github.com/ellezio/Chat-app-with-Go/internal/services"
 	"github.com/ellezio/Chat-app-with-Go/internal/session"
 	"github.com/ellezio/Chat-app-with-Go/web/components"
 	"github.com/gorilla/websocket"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type ClientMessageType int
@@ -25,8 +28,10 @@ const (
 )
 
 type ClientMessage struct {
-	Type ClientMessageType
-	Msg  message.Message
+	Type            ClientMessageType
+	Msg             message.Message
+	OnlySender      bool
+	SenderSessionId session.SessionID
 }
 
 type Client struct {
@@ -65,18 +70,22 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 						MessagesList([]message.Message{msg}, true).
 						Render(ctx, &html)
 
+					children := components.ContextMenu(msg, false)
+					ctx = templ.WithChildren(ctx, children)
+					components.ContextMenusWrapper(true).Render(ctx, &html)
+
 				case UpdateMessage:
-					user := session.GetUsername(ctx)
-					if user != msg.Author {
+					if clientMsg.OnlySender && client.sessionID != clientMsg.SenderSessionId {
 						continue
 					}
 
-					err := components.
-						MessageBox(clientMsg.Msg, true).
+					components.
+						MessageBox(clientMsg.Msg, true, false).
 						Render(ctx, &html)
-					if err != nil {
-						log.Println(err)
-					}
+
+					components.
+						ContextMenu(msg, true).
+						Render(ctx, &html)
 				}
 
 				if err := client.conn.WriteMessage(websocket.TextMessage, html.Bytes()); err != nil {
@@ -85,7 +94,7 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 			}
 
 			if msg.Status == message.Sending {
-				go func(msg message.Message) {
+				go func(msg message.Message, senderSessionId session.SessionID) {
 					err := database.UpdateStatus(msg.ID, message.Sent)
 					if err != nil {
 						log.Println(err)
@@ -95,12 +104,14 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 					}
 
 					updateMsg := ClientMessage{
-						Type: UpdateMessage,
-						Msg:  msg,
+						Type:            UpdateMessage,
+						Msg:             msg,
+						OnlySender:      true,
+						SenderSessionId: senderSessionId,
 					}
 
 					h.broadcast <- updateMsg
-				}(msg)
+				}(msg, clientMsg.SenderSessionId)
 			}
 		}
 	}()
@@ -175,8 +186,9 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 		h.chatService.SaveMessage(msg)
 
 		clientMsg := ClientMessage{
-			Type: NewMessage,
-			Msg:  *msg,
+			Type:            NewMessage,
+			Msg:             *msg,
+			SenderSessionId: client.sessionID,
 		}
 
 		h.broadcast <- clientMsg
@@ -191,7 +203,8 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username := session.GetUsername(r.Context())
+	sesh := session.GetSession(r.Context())
+	username := sesh.Username
 
 	err := r.ParseMultipartForm(1024)
 	if err != nil {
@@ -230,8 +243,157 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	h.chatService.SaveMessage(msg)
 
 	clientMsg := ClientMessage{
-		Type: NewMessage,
-		Msg:  *msg,
+		Type:            NewMessage,
+		Msg:             *msg,
+		SenderSessionId: sesh.ID,
+	}
+
+	h.broadcast <- clientMsg
+}
+func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+
+	if !query.Has("msg-id") {
+		w.WriteHeader(400)
+		return
+	}
+
+	msgId := query.Get("msg-id")
+
+	id, err := bson.ObjectIDFromHex(msgId)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(400)
+		return
+	}
+
+	msg, err := database.GetMessage(id)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	components.MessageBox(*msg, true, false).Render(r.Context(), w)
+}
+
+func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	msgId := r.FormValue("msg-id")
+
+	id, err := bson.ObjectIDFromHex(msgId)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(400)
+		return
+	}
+
+	msg, err := database.GetMessage(id)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	components.
+		MessageBox(*msg, true, true).
+		Render(r.Context(), w)
+}
+
+func (h *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	msgId := r.FormValue("msg-id")
+	msgContent := r.FormValue("msg-content")
+
+	id, err := bson.ObjectIDFromHex(msgId)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(400)
+		return
+	}
+
+	msg, err := database.UpdateContent(id, msgContent)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	sesh := session.GetSession(r.Context())
+	clientMsg := ClientMessage{
+		Type:            UpdateMessage,
+		Msg:             *msg,
+		SenderSessionId: sesh.ID,
+	}
+
+	h.broadcast <- clientMsg
+}
+
+func (h *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) {
+}
+
+func (h *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	doHide, err := strconv.ParseBool(r.PathValue("doHide"))
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(400)
+		return
+	}
+
+	msgId := r.FormValue("msg-id")
+	sesh := session.GetSession(r.Context())
+	user := sesh.Username
+
+	id, err := bson.ObjectIDFromHex(msgId)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(400)
+		return
+	}
+
+	msg, err := database.SetHideMessage(id, user, doHide)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+	}
+
+	clientMsg := ClientMessage{
+		Type:            UpdateMessage,
+		Msg:             *msg,
+		SenderSessionId: sesh.ID,
+		OnlySender:      true,
+	}
+
+	h.broadcast <- clientMsg
+}
+
+func (h *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+
+	msgId := r.FormValue("msg-id")
+	sesh := session.GetSession(r.Context())
+
+	id, err := bson.ObjectIDFromHex(msgId)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(400)
+		return
+	}
+
+	msg, err := database.DeleteMessage(id)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(404)
+		return
+	}
+
+	log.Println(msg)
+
+	clientMsg := ClientMessage{
+		Type:            UpdateMessage,
+		Msg:             *msg,
+		SenderSessionId: sesh.ID,
 	}
 
 	h.broadcast <- clientMsg

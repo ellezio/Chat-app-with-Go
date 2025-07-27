@@ -30,8 +30,16 @@ func NewDB() {
 	}
 }
 
+func getDatabase() *mongo.Database {
+	return client.Database("chat_app")
+}
+
+func getMessagesCollection() *mongo.Collection {
+	return getDatabase().Collection("messages")
+}
+
 func GetMessages() ([]message.Message, error) {
-	coll := client.Database("chat_app").Collection("messages")
+	coll := getMessagesCollection()
 	var results []message.Message
 	data, err := coll.Find(context.TODO(), bson.D{})
 	if err != nil {
@@ -46,8 +54,21 @@ func GetMessages() ([]message.Message, error) {
 	return results, nil
 }
 
+func GetMessage(id bson.ObjectID) (*message.Message, error) {
+	coll := getMessagesCollection()
+
+	var result message.Message
+	res := coll.FindOne(context.TODO(), bson.M{"_id": id})
+	err := res.Decode(&result)
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
 func SaveMessage(msg *message.Message) error {
-	coll := client.Database("chat_app").Collection("messages")
+	coll := getMessagesCollection()
 
 	res, err := coll.InsertOne(
 		context.TODO(),
@@ -68,7 +89,7 @@ func SaveMessage(msg *message.Message) error {
 }
 
 func UpdateStatus(id bson.ObjectID, status message.MessageStatus) error {
-	coll := client.Database("chat_app").Collection("messages")
+	coll := getMessagesCollection()
 
 	res, err := coll.UpdateByID(
 		context.TODO(),
@@ -94,4 +115,73 @@ func UpdateStatus(id bson.ObjectID, status message.MessageStatus) error {
 	}
 
 	return nil
+}
+
+func SetHideMessage(id bson.ObjectID, user string, value bool) (*message.Message, error) {
+	coll := getMessagesCollection()
+
+	var operation string
+	if value {
+		operation = "$addToSet"
+	} else {
+		operation = "$pull"
+	}
+
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	res := coll.FindOneAndUpdate(
+		context.TODO(),
+		bson.M{"_id": id},
+		bson.M{operation: bson.M{"hidden_for": user}},
+		opts,
+	)
+
+	var result message.Message
+	err := res.Decode(&result)
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func DeleteMessage(id bson.ObjectID) (*message.Message, error) {
+	coll := getMessagesCollection()
+
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	res := coll.FindOneAndUpdate(
+		context.TODO(),
+		bson.M{"_id": id},
+		bson.M{"$set": bson.M{"deleted": true}},
+		opts,
+	)
+
+	var result message.Message
+	err := res.Decode(&result)
+
+	if err != nil {
+		fmt.Println(res)
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func UpdateContent(id bson.ObjectID, content string) (*message.Message, error) {
+	coll := getMessagesCollection()
+
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	res := coll.FindOneAndUpdate(
+		context.TODO(),
+		bson.M{"_id": id},
+		bson.M{"$set": bson.M{"content": content}},
+		opts,
+	)
+
+	var result message.Message
+	err := res.Decode(&result)
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
 }

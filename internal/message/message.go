@@ -26,6 +26,8 @@ type Message struct {
 	CreatedAt  time.Time     `bson:"created_at"`
 	ModifiedAt time.Time     `bson:"modified_at"`
 	Status     MessageStatus `bson:"status"`
+	HiddenFor  []string      `bson:"hidden_for"`
+	Deleted    bool          `bson:"deleted"`
 }
 
 func New(author, content string, typ MessageType) *Message {
@@ -39,5 +41,7 @@ func New(author, content string, typ MessageType) *Message {
 		CreatedAt:  t,
 		ModifiedAt: t,
 		Status:     Sending,
+		HiddenFor:  []string{},
+		Deleted:    false,
 	}
 }
