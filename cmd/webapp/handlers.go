@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -10,7 +8,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/a-h/templ"
+	"github.com/ellezio/Chat-app-with-Go/internal/chat"
 	"github.com/ellezio/Chat-app-with-Go/internal/database"
 	"github.com/ellezio/Chat-app-with-Go/internal/message"
 	"github.com/ellezio/Chat-app-with-Go/internal/services"
@@ -20,110 +18,36 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-type ClientMessageType int
-
-const (
-	NewMessage ClientMessageType = iota
-	UpdateMessage
-)
-
-type ClientMessage struct {
-	Type            ClientMessageType
-	Msg             message.Message
-	OnlySender      bool
-	SenderSessionId session.SessionID
-}
-
-type Client struct {
-	sessionID session.SessionID
-	conn      *websocket.Conn
-}
-
 type ChatHandler struct {
 	chatService services.ChatService
 	upgrader    websocket.Upgrader
-	clients     map[*Client]bool
-	broadcast   chan ClientMessage
+	chats       map[string]*chat.Chat
 }
 
 func newChatHandler(cs services.ChatService) *ChatHandler {
 	h := &ChatHandler{
 		chatService: cs,
 		upgrader:    websocket.Upgrader{},
-		clients:     make(map[*Client]bool),
-		broadcast:   make(chan ClientMessage),
+		chats:       make(map[string]*chat.Chat),
 	}
 
-	go func() {
-		for {
-			clientMsg := <-h.broadcast
-			msg := clientMsg.Msg
-
-			for client := range h.clients {
-				ctx := session.Context(context.Background(), client.sessionID)
-
-				var html bytes.Buffer
-
-				switch clientMsg.Type {
-				case NewMessage:
-					components.
-						MessagesList([]message.Message{msg}, true).
-						Render(ctx, &html)
-
-					children := components.ContextMenu(msg, false)
-					ctx = templ.WithChildren(ctx, children)
-					components.ContextMenusWrapper(true).Render(ctx, &html)
-
-				case UpdateMessage:
-					if clientMsg.OnlySender && client.sessionID != clientMsg.SenderSessionId {
-						continue
-					}
-
-					components.
-						MessageBox(clientMsg.Msg, true, false).
-						Render(ctx, &html)
-
-					components.
-						ContextMenu(msg, true).
-						Render(ctx, &html)
-				}
-
-				if err := client.conn.WriteMessage(websocket.TextMessage, html.Bytes()); err != nil {
-					log.Println(err)
-				}
-			}
-
-			if msg.Status == message.Sending {
-				go func(msg message.Message, senderSessionId session.SessionID) {
-					err := database.UpdateStatus(msg.ID, message.Sent)
-					if err != nil {
-						log.Println(err)
-						msg.Status = message.Error
-					} else {
-						msg.Status = message.Sent
-					}
-
-					updateMsg := ClientMessage{
-						Type:            UpdateMessage,
-						Msg:             msg,
-						OnlySender:      true,
-						SenderSessionId: senderSessionId,
-					}
-
-					h.broadcast <- updateMsg
-				}(msg, clientMsg.SenderSessionId)
-			}
-		}
-	}()
+	h.chats["test"] = chat.New()
+	h.chats["test"].Start()
 
 	return h
 }
 
-func (h *ChatHandler) Page(w http.ResponseWriter, r *http.Request) {
-	components.Page(h.chatService.GetMessages()).Render(r.Context(), w)
+func (self *ChatHandler) Page(w http.ResponseWriter, r *http.Request) {
+	chtId := r.PathValue("chat-id")
+	if cht, ok := self.chats[chtId]; ok {
+		components.Page(cht.GetMessages()).Render(r.Context(), w)
+		return
+	}
+
+	components.Page(nil).Render(r.Context(), w)
 }
 
-func (h *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		log.Fatal(err)
 	}
@@ -142,7 +66,7 @@ func (h *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("<div id='modal' hx-swap-oob='delete'></div>"))
 }
 
-func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
+func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	if !session.IsLoggedIn(r.Context()) {
 		return
 	}
@@ -150,19 +74,21 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	sesh := session.GetSession(r.Context())
 	username := sesh.Username
 
-	conn, err := h.upgrader.Upgrade(w, r, nil)
+	conn, err := self.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 	}
 
-	client := &Client{sesh.ID, conn}
-	h.clients[client] = true
+	client := chat.NewClient(sesh.ID, conn)
 
 	log.Printf("%s Connected\r\n", username)
 
+	var cht *chat.Chat
+
 	for {
 		var payload struct {
-			Msg string `json:"msg"`
+			Msg    string `json:"msg"`
+			ChatId string `json:"chat-id"`
 		}
 
 		_, p, err := conn.ReadMessage()
@@ -177,34 +103,48 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		msg := message.New(
-			username,
-			payload.Msg,
-			message.TextMessage,
-		)
-
-		h.chatService.SaveMessage(msg)
-
-		clientMsg := ClientMessage{
-			Type:            NewMessage,
-			Msg:             *msg,
-			SenderSessionId: client.sessionID,
+		chtId := payload.ChatId
+		if newCht, ok := self.chats[chtId]; ok {
+			if newCht != cht {
+				if cht != nil {
+					cht.DisconnectClient(client)
+				}
+				cht = newCht
+				cht.ConnectClient(client)
+			}
+		} else {
+			continue
 		}
 
-		h.broadcast <- clientMsg
+		if payload.Msg != "" {
+			msg := message.New(
+				username,
+				payload.Msg,
+				message.TextMessage,
+			)
+
+			self.chatService.SaveMessage(msg)
+
+			clientMsg := &chat.ClientMessage{
+				Type:            chat.NewMessage,
+				Msg:             *msg,
+				SenderSessionId: client.SessionID,
+			}
+
+			cht.SendMessage(clientMsg)
+		}
 	}
 
-	delete(h.clients, client)
+	if cht != nil {
+		cht.DisconnectClient(client)
+	}
 }
 
-func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
+func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	if !session.IsLoggedIn(r.Context()) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-
-	sesh := session.GetSession(r.Context())
-	username := sesh.Username
 
 	err := r.ParseMultipartForm(1024)
 	if err != nil {
@@ -213,6 +153,15 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		// TODO htmx response
 		return
 	}
+
+	chtId := r.FormValue("chat-id")
+	cht, ok := self.chats[chtId]
+	if !ok {
+		return
+	}
+
+	sesh := session.GetSession(r.Context())
+	username := sesh.Username
 
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
@@ -240,15 +189,15 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		message.ImageMessage,
 	)
 
-	h.chatService.SaveMessage(msg)
+	self.chatService.SaveMessage(msg)
 
-	clientMsg := ClientMessage{
-		Type:            NewMessage,
+	clientMsg := &chat.ClientMessage{
+		Type:            chat.NewMessage,
 		Msg:             *msg,
 		SenderSessionId: sesh.ID,
 	}
 
-	h.broadcast <- clientMsg
+	cht.SendMessage(clientMsg)
 }
 func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
@@ -300,10 +249,16 @@ func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
 		Render(r.Context(), w)
 }
 
-func (h *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request) {
+func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	msgId := r.FormValue("msg-id")
 	msgContent := r.FormValue("msg-content")
+
+	chtId := r.FormValue("chat-id")
+	cht, ok := self.chats[chtId]
+	if !ok {
+		return
+	}
 
 	id, err := bson.ObjectIDFromHex(msgId)
 	if err != nil {
@@ -320,20 +275,27 @@ func (h *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sesh := session.GetSession(r.Context())
-	clientMsg := ClientMessage{
-		Type:            UpdateMessage,
+	clientMsg := &chat.ClientMessage{
+		Type:            chat.UpdateMessage,
 		Msg:             *msg,
 		SenderSessionId: sesh.ID,
 	}
 
-	h.broadcast <- clientMsg
+	cht.SendMessage(clientMsg)
 }
 
-func (h *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) {
+func (self *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) {
 }
 
-func (h *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
+func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+
+	chtId := r.FormValue("chat-id")
+	cht, ok := self.chats[chtId]
+	if !ok {
+		return
+	}
+
 	doHide, err := strconv.ParseBool(r.PathValue("doHide"))
 	if err != nil {
 		log.Println(err)
@@ -358,18 +320,24 @@ func (h *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 	}
 
-	clientMsg := ClientMessage{
-		Type:            UpdateMessage,
+	clientMsg := &chat.ClientMessage{
+		Type:            chat.UpdateMessage,
 		Msg:             *msg,
 		SenderSessionId: sesh.ID,
 		OnlySender:      true,
 	}
 
-	h.broadcast <- clientMsg
+	cht.SendMessage(clientMsg)
 }
 
-func (h *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
+func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
+
+	chtId := r.FormValue("chat-id")
+	cht, ok := self.chats[chtId]
+	if !ok {
+		return
+	}
 
 	msgId := r.FormValue("msg-id")
 	sesh := session.GetSession(r.Context())
@@ -388,13 +356,11 @@ func (h *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println(msg)
-
-	clientMsg := ClientMessage{
-		Type:            UpdateMessage,
+	clientMsg := &chat.ClientMessage{
+		Type:            chat.UpdateMessage,
 		Msg:             *msg,
 		SenderSessionId: sesh.ID,
 	}
 
-	h.broadcast <- clientMsg
+	cht.SendMessage(clientMsg)
 }

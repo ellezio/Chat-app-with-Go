@@ -95,7 +95,20 @@ templ SendBar() {
 }
 
 templ ChatWindow(msgs []message.Message) {
-	<div class="flex flex-col w-full" hx-ext="ws" ws-connect="/chatroom">
+	<div
+		class="flex flex-col w-full"
+		hx-ext="ws"
+		ws-connect="/chatroom"
+		hx-vals='{"chat-id": "test"}'
+		ws-send
+		hx-trigger="load"
+	>
+		@ctxMenuScripts()
+		@ContextMenusWrapper(false) {
+			for _, msg := range msgs {
+				@ContextMenu(msg, false)
+			}
+		}
 		<div id="scroller" class="flex-1 p-2 overflow-y-auto">
 			@MessagesList(msgs, false)
 			<div id="anchor"></div>
@@ -124,12 +137,6 @@ templ Page(msgs []message.Message) {
 			htmx.config.allowNestedOobSwaps=false;
 		</script>
 		<body class="bg-delta m-0 overflow-y-hidden h-screen">
-			@ctxMenuScripts()
-			@ContextMenusWrapper(false) {
-				for _, msg := range msgs {
-					@ContextMenu(msg, false)
-				}
-			}
 			<div class="max-w-screen-md mx-auto bg-gamma h-full flex">
 				@ChatWindow(msgs)
 			</div>
