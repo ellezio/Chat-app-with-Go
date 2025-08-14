@@ -20,6 +20,7 @@ const (
 
 type Message struct {
 	ID         bson.ObjectID `bson:"_id,omitempty"`
+	ChatID     bson.ObjectID `bson:"chat_id"`
 	Author     string        `bson:"author"`
 	Content    string        `bson:"content"`
 	Type       MessageType   `bson:"type"`
@@ -30,11 +31,12 @@ type Message struct {
 	Deleted    bool          `bson:"deleted"`
 }
 
-func New(author, content string, typ MessageType) *Message {
+func New(chatId bson.ObjectID, author, content string, typ MessageType) *Message {
 	t := time.Now()
 
 	return &Message{
 		ID:         bson.NilObjectID,
+		ChatID:     chatId,
 		Author:     author,
 		Content:    content,
 		Type:       typ,

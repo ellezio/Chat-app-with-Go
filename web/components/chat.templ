@@ -2,6 +2,7 @@ package components
 
 import "github.com/ellezio/Chat-app-with-Go/internal/message"
 import "github.com/ellezio/Chat-app-with-Go/internal/session"
+import "github.com/ellezio/Chat-app-with-Go/internal/chat"
 import "time"
 import "slices"
 
@@ -94,33 +95,37 @@ templ SendBar() {
 	</div>
 }
 
-templ ChatWindow(msgs []message.Message) {
+templ ChatWindow(cht *chat.Chat, msgs []message.Message) {
 	<div
-		class="flex flex-col w-full"
-		hx-ext="ws"
-		ws-connect="/chatroom"
-		hx-vals='{"chat-id": "test"}'
-		ws-send
-		hx-trigger="load"
+		id="chat-window"
+		class="max-w-screen-md bg-gamma h-full flex"
+		hx-swap-oob="innerHTML"
 	>
-		@ctxMenuScripts()
-		@ContextMenusWrapper(false) {
-			for _, msg := range msgs {
-				@ContextMenu(msg, false)
+		<div
+			class="flex flex-col w-full"
+			hx-vals={ `{"chat-id": "` + cht.ID.Hex() + `"}` }
+		>
+			@ContextMenusWrapper(false) {
+				for _, msg := range msgs {
+					@ContextMenu(msg, false)
+				}
 			}
-		}
-		<div id="scroller" class="flex-1 p-2 overflow-y-auto">
-			@MessagesList(msgs, false)
-			<div id="anchor"></div>
+			<div id="scroller" class="flex-1 p-2 overflow-y-auto">
+				@MessagesList(msgs, false)
+				<div id="anchor"></div>
+			</div>
+			<div
+				class="h-fit py-4 px-2 bg-beta"
+				hx-vals={ `{"msg-type": "send-message", "chat-id": "` + cht.ID.Hex() + `"}` }
+			>
+				@SendBar()
+			</div>
 		</div>
 		@msgScroller()
-		<div class="h-fit py-4 px-2 bg-beta">
-			@SendBar()
-		</div>
 	</div>
 }
 
-templ Page(msgs []message.Message) {
+templ Page(chts []*chat.Chat, msgs []message.Message) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -129,16 +134,32 @@ templ Page(msgs []message.Message) {
 			<link href="/css/containers.css" rel="stylesheet"/>
 			<link href="/css/chat.css" rel="stylesheet"/>
 			<link href="/css/output.css" rel="stylesheet"/>
-			<script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
-			<script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js"></script>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.6/dist/htmx.min.js" integrity="sha384-Akqfrbj/HpNVo8k11SXBb6TlBWmXXlYQrCSqEWmyKJe+hDm3Z/B2WVG4smwBkRVm" crossorigin="anonymous"></script>
+			<script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" integrity="sha384-0RHpPqZ4QLJXG/ALtieEL/G+NuAI98LYSkT9s6FgciveUhAdo/6wab5NU1tm2Bxs" crossorigin="anonymous"></script>
 			<title>Chat page</title>
 		</head>
 		<script>
 			htmx.config.allowNestedOobSwaps=false;
 		</script>
 		<body class="bg-delta m-0 overflow-y-hidden h-screen">
-			<div class="max-w-screen-md mx-auto bg-gamma h-full flex">
-				@ChatWindow(msgs)
+			<div
+				class="flex justify-center h-full"
+				hx-ext="ws"
+				ws-connect="/chatroom"
+			>
+				<ul>
+					for _, cht := range chts {
+						<li>
+							<button
+								type="button"
+								hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID.Hex() + `"}` }
+								ws-send
+							>{ cht.Name }</button>
+						</li>
+					}
+				</ul>
+				@ctxMenuScripts()
+				@ChatWindow(chts[0], msgs)
 			</div>
 			if !session.IsLoggedIn(ctx) {
 				<div id="modal" class="flex justify-center items-center backdrop-blur-sm fixed left-0 top-0 w-screen h-screen">
@@ -181,14 +202,14 @@ templ ContextMenusWrapper(oob bool) {
 }
 
 templ ContextMenu(msg message.Message, oob bool) {
-	{{ AuthorName := session.GetUsername(ctx) }}
-	{{ isAuthor := msg.Author == AuthorName }}
-	{{ isHidden := slices.Contains(msg.HiddenFor, AuthorName) }}
+	{{ authorName := session.GetUsername(ctx) }}
+	{{ isAuthor := msg.Author == authorName }}
+	{{ isHidden := slices.Contains(msg.HiddenFor, authorName) }}
 	<ul
 		id={ "ctx-menu-" + msg.ID.Hex() }
 		data-msg-id={ msg.ID.Hex() }
 		class="ctx-menu hidden relative bg-alpha w-fit"
-		hx-vals={ "js:{'msg-id':'" + msg.ID.Hex() + "'}" }
+		hx-vals={ `{"msg-id": "` + msg.ID.Hex() + `"}` }
 		onclick="toggleContextMenu()"
 		if oob {
 			hx-swap-oob="true"

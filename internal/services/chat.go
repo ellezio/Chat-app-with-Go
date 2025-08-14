@@ -14,16 +14,6 @@ func NewChatService() *ChatService {
 type ChatService struct {
 }
 
-func (s ChatService) GetMessages() []message.Message {
-	msgs, err := database.GetMessages()
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
-
-	return msgs
-}
-
 func (s ChatService) SaveMessage(msg *message.Message) {
 	err := database.SaveMessage(msg)
 

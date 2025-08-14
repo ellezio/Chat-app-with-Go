@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 
+	"github.com/a-h/templ"
 	"github.com/ellezio/Chat-app-with-Go/internal/chat"
 	"github.com/ellezio/Chat-app-with-Go/internal/database"
 	"github.com/ellezio/Chat-app-with-Go/internal/message"
@@ -31,20 +36,29 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 		chats:       make(map[string]*chat.Chat),
 	}
 
-	h.chats["test"] = chat.New()
-	h.chats["test"].Start()
+	cht := chat.New("test1")
+	cht.ID = bson.ObjectID{1}
+	cht.Start()
+	h.chats[cht.ID.Hex()] = cht
+
+	cht = chat.New("test2")
+	cht.ID = bson.ObjectID{2}
+	cht.Start()
+	h.chats[cht.ID.Hex()] = cht
 
 	return h
 }
 
 func (self *ChatHandler) Page(w http.ResponseWriter, r *http.Request) {
 	chtId := r.PathValue("chat-id")
+	chts := slices.Collect(maps.Values(self.chats))
+
 	if cht, ok := self.chats[chtId]; ok {
-		components.Page(cht.GetMessages()).Render(r.Context(), w)
+		components.Page(chts, cht.GetMessages()).Render(r.Context(), w)
 		return
 	}
 
-	components.Page(nil).Render(r.Context(), w)
+	components.Page(chts, nil).Render(r.Context(), w)
 }
 
 func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +94,8 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := chat.NewClient(sesh.ID, conn)
+	client.OnSendMessage = handleSend
+	client.OnUpdateMessage = handleUpdate
 
 	log.Printf("%s Connected\r\n", username)
 
@@ -87,6 +103,7 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		var payload struct {
+			Type   string `json:"msg-type"`
 			Msg    string `json:"msg"`
 			ChatId string `json:"chat-id"`
 		}
@@ -104,34 +121,48 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 		}
 
 		chtId := payload.ChatId
-		if newCht, ok := self.chats[chtId]; ok {
-			if newCht != cht {
-				if cht != nil {
-					cht.DisconnectClient(client)
+
+		switch payload.Type {
+		case "change-chat":
+			if newCht, ok := self.chats[chtId]; ok {
+				if newCht != cht {
+					if cht != nil {
+						cht.DisconnectClient(client)
+					}
+
+					cht = newCht
+					cht.ConnectClient(client)
+
+					var html bytes.Buffer
+					msgs := cht.GetMessages()
+					ctx := session.Context(context.Background(), client.SessionID)
+
+					components.ChatWindow(cht, msgs).Render(ctx, &html)
+
+					client.Send(html.Bytes())
 				}
-				cht = newCht
-				cht.ConnectClient(client)
-			}
-		} else {
-			continue
-		}
-
-		if payload.Msg != "" {
-			msg := message.New(
-				username,
-				payload.Msg,
-				message.TextMessage,
-			)
-
-			self.chatService.SaveMessage(msg)
-
-			clientMsg := &chat.ClientMessage{
-				Type:            chat.NewMessage,
-				Msg:             *msg,
-				SenderSessionId: client.SessionID,
 			}
 
-			cht.SendMessage(clientMsg)
+		case "send-message":
+			if payload.Msg != "" {
+				msg := message.New(
+					cht.ID,
+					username,
+					payload.Msg,
+					message.TextMessage,
+				)
+				msg.ChatID = cht.ID
+
+				self.chatService.SaveMessage(msg)
+
+				clientMsg := &chat.ClientMessage{
+					Type:            chat.NewMessage,
+					Msg:             *msg,
+					SenderSessionId: client.SessionID,
+				}
+
+				cht.SendMessage(clientMsg)
+			}
 		}
 	}
 
@@ -184,6 +215,7 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := message.New(
+		cht.ID,
 		username,
 		fileHeader.Filename,
 		message.ImageMessage,
@@ -199,6 +231,7 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	cht.SendMessage(clientMsg)
 }
+
 func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
@@ -285,6 +318,7 @@ func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request)
 }
 
 func (self *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(501)
 }
 
 func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
@@ -363,4 +397,34 @@ func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cht.SendMessage(clientMsg)
+}
+
+func handleSend(ctx context.Context, clientMsg *chat.ClientMessage) *bytes.Buffer {
+	msg := clientMsg.Msg
+	var html bytes.Buffer
+
+	components.
+		MessagesList([]message.Message{msg}, true).
+		Render(ctx, &html)
+
+	children := components.ContextMenu(msg, false)
+	ctx = templ.WithChildren(ctx, children)
+	components.ContextMenusWrapper(true).Render(ctx, &html)
+
+	return &html
+}
+
+func handleUpdate(ctx context.Context, clientMsg *chat.ClientMessage) *bytes.Buffer {
+	msg := clientMsg.Msg
+	var html bytes.Buffer
+
+	components.
+		MessageBox(clientMsg.Msg, true, false).
+		Render(ctx, &html)
+
+	components.
+		ContextMenu(msg, true).
+		Render(ctx, &html)
+
+	return &html
 }

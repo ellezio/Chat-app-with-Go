@@ -38,10 +38,10 @@ func getMessagesCollection() *mongo.Collection {
 	return getDatabase().Collection("messages")
 }
 
-func GetMessages() ([]message.Message, error) {
+func GetMessages(chatId bson.ObjectID) ([]message.Message, error) {
 	coll := getMessagesCollection()
 	var results []message.Message
-	data, err := coll.Find(context.TODO(), bson.D{})
+	data, err := coll.Find(context.TODO(), bson.M{"chat_id": chatId})
 	if err != nil {
 		return nil, err
 	}
