@@ -1,20 +1,11 @@
 package chat
 
-// TODO
-// [X] Create new Chat
-// [ ] Save chat to DB
-// [ ] Load chats from DB
-// [X] Connect messages to chat
-// [X] Show list of chats on left from messages
-// [X] Switching to chat repalces current one in view
-
 import (
 	"bytes"
 	"context"
 	"log"
 	"sync"
 
-	"github.com/ellezio/Chat-app-with-Go/internal/database"
 	"github.com/ellezio/Chat-app-with-Go/internal/message"
 	"github.com/ellezio/Chat-app-with-Go/internal/session"
 	"github.com/gorilla/websocket"
@@ -91,21 +82,30 @@ func New(name string) *Chat {
 	return &Chat{
 		bson.NilObjectID,
 		name,
+		nil,
 		make(map[*Client]bool),
 		make(chan ClientMessage),
 		false,
 	}
 }
 
+type Store interface {
+	GetMessage(msgID bson.ObjectID) (*message.Message, error)
+	GetMessages(chatID bson.ObjectID) ([]message.Message, error)
+	SaveMessage(chatID bson.ObjectID, msg *message.Message) error
+}
+
 type Chat struct {
 	ID      bson.ObjectID `bson:"_id,omitempty"`
 	Name    string        `bson:"name"`
+	Store   Store         `bson:"-"`
 	clients map[*Client]bool
 	ch      chan ClientMessage
 	started bool
 }
 
 func (self *Chat) Start() {
+	self.clients = make(map[*Client]bool)
 	self.ch = make(chan ClientMessage)
 	self.started = true
 
@@ -120,12 +120,11 @@ func (self *Chat) Start() {
 			msg := clientMsg.Msg
 			if msg.Status == message.Sending {
 				go func(msg message.Message, senderSessionId session.SessionID) {
-					err := database.UpdateStatus(msg.ID, message.Sent)
+					msg.Status = message.Sent
+					err := self.Store.SaveMessage(self.ID, &msg)
 					if err != nil {
 						log.Println(err)
 						msg.Status = message.Error
-					} else {
-						msg.Status = message.Sent
 					}
 
 					updateMsg := ClientMessage{
@@ -155,7 +154,7 @@ func (self *Chat) SendMessage(msg *ClientMessage) {
 }
 
 func (self *Chat) GetMessages() []message.Message {
-	msgs, err := database.GetMessages(self.ID)
+	msgs, err := self.Store.GetMessages(self.ID)
 	if err != nil {
 		log.Println(err)
 		return nil

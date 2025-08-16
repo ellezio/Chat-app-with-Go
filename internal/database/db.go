@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/ellezio/Chat-app-with-Go/internal/chat"
 	"github.com/ellezio/Chat-app-with-Go/internal/message"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -15,9 +16,7 @@ import (
 var client *mongo.Client
 
 func NewDB() {
-	var (
-		err error
-	)
+	var err error
 
 	uri := os.Getenv("MONGODB_URI")
 	uri = fmt.Sprintf("mongodb://%s", uri)
@@ -36,6 +35,10 @@ func getDatabase() *mongo.Database {
 
 func getMessagesCollection() *mongo.Collection {
 	return getDatabase().Collection("messages")
+}
+
+func getChatsCollection() *mongo.Collection {
+	return getDatabase().Collection("chats")
 }
 
 func GetMessages(chatId bson.ObjectID) ([]message.Message, error) {
@@ -117,7 +120,7 @@ func UpdateStatus(id bson.ObjectID, status message.MessageStatus) error {
 	return nil
 }
 
-func SetHideMessage(id bson.ObjectID, user string, value bool) (*message.Message, error) {
+func (self *MongodbStore) SetHideMessage(id bson.ObjectID, user string, value bool) (*message.Message, error) {
 	coll := getMessagesCollection()
 
 	var operation string
@@ -144,7 +147,7 @@ func SetHideMessage(id bson.ObjectID, user string, value bool) (*message.Message
 	return &result, nil
 }
 
-func DeleteMessage(id bson.ObjectID) (*message.Message, error) {
+func (self *MongodbStore) DeleteMessage(id bson.ObjectID) (*message.Message, error) {
 	coll := getMessagesCollection()
 
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
@@ -166,7 +169,46 @@ func DeleteMessage(id bson.ObjectID) (*message.Message, error) {
 	return &result, nil
 }
 
-func UpdateContent(id bson.ObjectID, content string) (*message.Message, error) {
+func SaveChat(cht *chat.Chat) {
+
+}
+
+type MongodbStore struct{}
+
+func (self *MongodbStore) GetMessage(msgID bson.ObjectID) (*message.Message, error) {
+	return GetMessage(msgID)
+}
+
+func (self *MongodbStore) GetMessages(chatID bson.ObjectID) ([]message.Message, error) {
+	return GetMessages(chatID)
+}
+
+func (self *MongodbStore) SaveMessage(chatID bson.ObjectID, msg *message.Message) error {
+	if msg.ID == bson.NilObjectID {
+		return SaveMessage(msg)
+	} else {
+		coll := getMessagesCollection()
+
+		res, err := coll.UpdateByID(
+			context.TODO(),
+			msg.ID,
+			bson.M{"$set": msg},
+		)
+
+		if err != nil {
+			return errors.Join(errors.New("Failed to update message"), err)
+		}
+
+		if res.ModifiedCount == 0 {
+			fmt.Println(res)
+			return errors.New("Failed to update message")
+		}
+	}
+
+	return nil
+}
+
+func (self *MongodbStore) UpdateMessageContent(id bson.ObjectID, content string) (*message.Message, error) {
 	coll := getMessagesCollection()
 
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
@@ -184,4 +226,38 @@ func UpdateContent(id bson.ObjectID, content string) (*message.Message, error) {
 	}
 
 	return &result, nil
+}
+
+func (self *MongodbStore) SaveChat(cht *chat.Chat) error {
+	coll := getChatsCollection()
+
+	res, err := coll.InsertOne(context.TODO(), cht)
+	if err != nil {
+		return errors.Join(errors.New("Failed to save chat"), err)
+	}
+
+	if id, ok := res.InsertedID.(bson.ObjectID); ok {
+		cht.ID = id
+	} else {
+		return errors.New("Failed to cast InsertionID")
+	}
+
+	return nil
+}
+
+func (self *MongodbStore) GetChats() ([]chat.Chat, error) {
+	coll := getChatsCollection()
+
+	res, err := coll.Find(context.TODO(), bson.M{})
+	if err != nil {
+		return nil, errors.Join(errors.New("Failed to get chats."), err)
+	}
+
+	var chts []chat.Chat
+	err = res.All(context.TODO(), &chts)
+	if err != nil {
+		return nil, errors.Join(errors.New("Failed to unmarshal chats."), err)
+	}
+
+	return chts, nil
 }

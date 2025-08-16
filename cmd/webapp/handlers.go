@@ -29,6 +29,8 @@ type ChatHandler struct {
 	chats       map[string]*chat.Chat
 }
 
+var store = &database.MongodbStore{}
+
 func newChatHandler(cs services.ChatService) *ChatHandler {
 	h := &ChatHandler{
 		chatService: cs,
@@ -36,15 +38,26 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 		chats:       make(map[string]*chat.Chat),
 	}
 
-	cht := chat.New("test1")
-	cht.ID = bson.ObjectID{1}
-	cht.Start()
-	h.chats[cht.ID.Hex()] = cht
+	chts, err := store.GetChats()
+	if err != nil {
+		panic(err)
+	}
 
-	cht = chat.New("test2")
-	cht.ID = bson.ObjectID{2}
-	cht.Start()
-	h.chats[cht.ID.Hex()] = cht
+	if len(chts) == 0 {
+		cht := chat.New("test1")
+		store.SaveChat(cht)
+		chts = append(chts, *cht)
+
+		cht = chat.New("test2")
+		store.SaveChat(cht)
+		chts = append(chts, *cht)
+	}
+
+	for _, cht := range chts {
+		cht.Store = store
+		cht.Start()
+		h.chats[cht.ID.Hex()] = &cht
+	}
 
 	return h
 }
@@ -249,7 +262,7 @@ func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := database.GetMessage(id)
+	msg, err := store.GetMessage(id)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(500)
@@ -270,7 +283,7 @@ func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := database.GetMessage(id)
+	msg, err := store.GetMessage(id)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(500)
@@ -300,7 +313,8 @@ func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	msg, err := database.UpdateContent(id, msgContent)
+	msg, err := store.UpdateMessageContent(id, msgContent)
+
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(500)
@@ -348,7 +362,7 @@ func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := database.SetHideMessage(id, user, doHide)
+	msg, err := store.SetHideMessage(id, user, doHide)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(500)
@@ -383,7 +397,7 @@ func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := database.DeleteMessage(id)
+	msg, err := store.DeleteMessage(id)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(404)
