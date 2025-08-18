@@ -6,7 +6,7 @@ import "github.com/ellezio/Chat-app-with-Go/internal/chat"
 import "time"
 import "slices"
 
-templ MessageBox(msg message.Message, oob bool, edit bool) {
+templ MessageBox(msg *message.Message, oob bool, edit bool) {
 	{{ AuthorName := session.GetUsername(ctx) }}
 	{{ isAuthor := msg.Author == AuthorName }}
 	{{ isHidden := slices.Contains(msg.HiddenFor, AuthorName) }}
@@ -63,7 +63,7 @@ templ MessageBox(msg message.Message, oob bool, edit bool) {
 	</li>
 }
 
-templ MessagesList(msgs []message.Message, oob bool) {
+templ MessagesList(msgs []*message.Message, oob bool) {
 	<ul
 		id="msgs-list"
 		if oob {
@@ -95,7 +95,7 @@ templ SendBar() {
 	</div>
 }
 
-templ ChatWindow(cht *chat.Chat, msgs []message.Message) {
+templ ChatWindow(chatID string, msgs []*message.Message) {
 	<div
 		id="chat-window"
 		class="max-w-screen-md bg-gamma h-full flex"
@@ -103,7 +103,7 @@ templ ChatWindow(cht *chat.Chat, msgs []message.Message) {
 	>
 		<div
 			class="flex flex-col w-full"
-			hx-vals={ `{"chat-id": "` + cht.ID.Hex() + `"}` }
+			hx-vals={ `{"chat-id": "` + chatID + `"}` }
 		>
 			@ContextMenusWrapper(false) {
 				for _, msg := range msgs {
@@ -116,7 +116,7 @@ templ ChatWindow(cht *chat.Chat, msgs []message.Message) {
 			</div>
 			<div
 				class="h-fit py-4 px-2 bg-beta"
-				hx-vals={ `{"msg-type": "send-message", "chat-id": "` + cht.ID.Hex() + `"}` }
+				hx-vals={ `{"msg-type": "send-message", "chat-id": "` + chatID + `"}` }
 			>
 				@SendBar()
 			</div>
@@ -125,7 +125,7 @@ templ ChatWindow(cht *chat.Chat, msgs []message.Message) {
 	</div>
 }
 
-templ Page(chts []*chat.Chat, msgs []message.Message) {
+templ Page(chts []*chat.Chat, msgs []*message.Message) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -147,19 +147,15 @@ templ Page(chts []*chat.Chat, msgs []message.Message) {
 				hx-ext="ws"
 				ws-connect="/chatroom"
 			>
-				<ul>
-					for _, cht := range chts {
-						<li>
-							<button
-								type="button"
-								hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID.Hex() + `"}` }
-								ws-send
-							>{ cht.Name }</button>
-						</li>
-					}
-				</ul>
+				<div>
+					@ChatList(chts)
+					<form hx-post="/chat" hx-on::after-request="this.reset()" hx-swap="none">
+						<input name="chat-name"/>
+						<button type="submit">Add</button>
+					</form>
+				</div>
 				@ctxMenuScripts()
-				@ChatWindow(chts[0], msgs)
+				@ChatWindow("", msgs)
 			</div>
 			if !session.IsLoggedIn(ctx) {
 				<div id="modal" class="flex justify-center items-center backdrop-blur-sm fixed left-0 top-0 w-screen h-screen">
@@ -201,7 +197,7 @@ templ ContextMenusWrapper(oob bool) {
 	</div>
 }
 
-templ ContextMenu(msg message.Message, oob bool) {
+templ ContextMenu(msg *message.Message, oob bool) {
 	{{ authorName := session.GetUsername(ctx) }}
 	{{ isAuthor := msg.Author == authorName }}
 	{{ isHidden := slices.Contains(msg.HiddenFor, authorName) }}
@@ -238,6 +234,23 @@ templ ErrorMsg(fieldId string, msg string) {
 		id={ fieldId + `-error-msg` }
 		class="text-red-700 font-semibold mt-1"
 	>{ msg }</div>
+}
+
+templ ChatList(chts []*chat.Chat) {
+	<ul
+		id="chat-list"
+		hx-swap-oob="beforeend"
+	>
+		for _, cht := range chts {
+			<li id={ cht.ID.Hex() }>
+				<button
+					type="button"
+					hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID.Hex() + `"}` }
+					ws-send
+				>{ cht.Name }</button>
+			</li>
+		}
+	</ul>
 }
 
 templ ctxMenuScripts() {

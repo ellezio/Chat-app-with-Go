@@ -31,12 +31,17 @@ type Message struct {
 	Deleted    bool          `bson:"deleted"`
 }
 
-func New(chatId bson.ObjectID, author, content string, typ MessageType) *Message {
+func New(chatID string, author, content string, typ MessageType) *Message {
 	t := time.Now()
+
+	cID, err := bson.ObjectIDFromHex(chatID)
+	if err != nil {
+		panic(err)
+	}
 
 	return &Message{
 		ID:         bson.NilObjectID,
-		ChatID:     chatId,
+		ChatID:     cID,
 		Author:     author,
 		Content:    content,
 		Type:       typ,

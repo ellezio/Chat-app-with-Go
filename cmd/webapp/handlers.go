@@ -6,10 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"log"
-	"maps"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 
 	"github.com/a-h/templ"
@@ -26,7 +24,7 @@ import (
 type ChatHandler struct {
 	chatService services.ChatService
 	upgrader    websocket.Upgrader
-	chats       map[string]*chat.Chat
+	chatSrv     *chat.ChatServer
 }
 
 var store = &database.MongodbStore{}
@@ -35,41 +33,20 @@ func newChatHandler(cs services.ChatService) *ChatHandler {
 	h := &ChatHandler{
 		chatService: cs,
 		upgrader:    websocket.Upgrader{},
-		chats:       make(map[string]*chat.Chat),
-	}
-
-	chts, err := store.GetChats()
-	if err != nil {
-		panic(err)
-	}
-
-	if len(chts) == 0 {
-		cht := chat.New("test1")
-		store.SaveChat(cht)
-		chts = append(chts, *cht)
-
-		cht = chat.New("test2")
-		store.SaveChat(cht)
-		chts = append(chts, *cht)
-	}
-
-	for _, cht := range chts {
-		cht.Store = store
-		cht.Start()
-		h.chats[cht.ID.Hex()] = &cht
+		chatSrv:     chat.NewChatServer(store),
 	}
 
 	return h
 }
 
 func (self *ChatHandler) Page(w http.ResponseWriter, r *http.Request) {
-	chtId := r.PathValue("chat-id")
-	chts := slices.Collect(maps.Values(self.chats))
+	// chtId := r.PathValue("chat-id")
+	chts := self.chatSrv.GetChats()
 
-	if cht, ok := self.chats[chtId]; ok {
-		components.Page(chts, cht.GetMessages()).Render(r.Context(), w)
-		return
-	}
+	// if cht, ok := self.chats[chtId]; ok {
+	// 	components.Page(chts, cht.GetMessages()).Render(r.Context(), w)
+	// 	return
+	// }
 
 	components.Page(chts, nil).Render(r.Context(), w)
 }
@@ -109,10 +86,11 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	client := chat.NewClient(sesh.ID, conn)
 	client.OnSendMessage = handleSend
 	client.OnUpdateMessage = handleUpdate
+	client.OnNewChat = handleNewChat
 
 	log.Printf("%s Connected\r\n", username)
 
-	var cht *chat.Chat
+	self.chatSrv.ConnectClient("", client)
 
 	for {
 		var payload struct {
@@ -133,40 +111,28 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		chtId := payload.ChatId
+		chatID := payload.ChatId
 
 		switch payload.Type {
 		case "change-chat":
-			if newCht, ok := self.chats[chtId]; ok {
-				if newCht != cht {
-					if cht != nil {
-						cht.DisconnectClient(client)
-					}
+			cht := self.chatSrv.ConnectClient(chatID, client)
+			msgs := cht.GetMessages()
 
-					cht = newCht
-					cht.ConnectClient(client)
+			ctx := session.Context(context.Background(), client.SessionID)
 
-					var html bytes.Buffer
-					msgs := cht.GetMessages()
-					ctx := session.Context(context.Background(), client.SessionID)
+			var html bytes.Buffer
+			components.ChatWindow(cht.ID.Hex(), msgs).Render(ctx, &html)
 
-					components.ChatWindow(cht, msgs).Render(ctx, &html)
-
-					client.Send(html.Bytes())
-				}
-			}
+			client.Send(html.Bytes())
 
 		case "send-message":
 			if payload.Msg != "" {
 				msg := message.New(
-					cht.ID,
+					chatID,
 					username,
 					payload.Msg,
 					message.TextMessage,
 				)
-				msg.ChatID = cht.ID
-
-				self.chatService.SaveMessage(msg)
 
 				clientMsg := &chat.ClientMessage{
 					Type:            chat.NewMessage,
@@ -174,14 +140,13 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 					SenderSessionId: client.SessionID,
 				}
 
+				cht := self.chatSrv.GetChat(chatID)
 				cht.SendMessage(clientMsg)
 			}
 		}
 	}
 
-	if cht != nil {
-		cht.DisconnectClient(client)
-	}
+	self.chatSrv.DisconnectClient(client)
 }
 
 func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
@@ -198,9 +163,9 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chtId := r.FormValue("chat-id")
-	cht, ok := self.chats[chtId]
-	if !ok {
+	chatID := r.FormValue("chat-id")
+	cht := self.chatSrv.GetChat(chatID)
+	if cht == nil {
 		return
 	}
 
@@ -228,7 +193,7 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := message.New(
-		cht.ID,
+		cht.ID.Hex(),
 		username,
 		fileHeader.Filename,
 		message.ImageMessage,
@@ -269,7 +234,7 @@ func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	components.MessageBox(*msg, true, false).Render(r.Context(), w)
+	components.MessageBox(msg, true, false).Render(r.Context(), w)
 }
 
 func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
@@ -291,7 +256,7 @@ func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	components.
-		MessageBox(*msg, true, true).
+		MessageBox(msg, true, true).
 		Render(r.Context(), w)
 }
 
@@ -300,9 +265,9 @@ func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request)
 	msgId := r.FormValue("msg-id")
 	msgContent := r.FormValue("msg-content")
 
-	chtId := r.FormValue("chat-id")
-	cht, ok := self.chats[chtId]
-	if !ok {
+	chatID := r.FormValue("chat-id")
+	cht := self.chatSrv.GetChat(chatID)
+	if cht == nil {
 		return
 	}
 
@@ -338,9 +303,9 @@ func (self *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) {
 func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
-	chtId := r.FormValue("chat-id")
-	cht, ok := self.chats[chtId]
-	if !ok {
+	chatID := r.FormValue("chat-id")
+	cht := self.chatSrv.GetChat(chatID)
+	if cht == nil {
 		return
 	}
 
@@ -381,9 +346,9 @@ func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 
-	chtId := r.FormValue("chat-id")
-	cht, ok := self.chats[chtId]
-	if !ok {
+	chatID := r.FormValue("chat-id")
+	cht := self.chatSrv.GetChat(chatID)
+	if cht == nil {
 		return
 	}
 
@@ -413,12 +378,18 @@ func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
 	cht.SendMessage(clientMsg)
 }
 
+func (self *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	chatName := r.FormValue("chat-name")
+	self.chatSrv.AddChat(chatName)
+}
+
 func handleSend(ctx context.Context, clientMsg *chat.ClientMessage) *bytes.Buffer {
-	msg := clientMsg.Msg
+	msg := &clientMsg.Msg
 	var html bytes.Buffer
 
 	components.
-		MessagesList([]message.Message{msg}, true).
+		MessagesList([]*message.Message{msg}, true).
 		Render(ctx, &html)
 
 	children := components.ContextMenu(msg, false)
@@ -429,15 +400,25 @@ func handleSend(ctx context.Context, clientMsg *chat.ClientMessage) *bytes.Buffe
 }
 
 func handleUpdate(ctx context.Context, clientMsg *chat.ClientMessage) *bytes.Buffer {
-	msg := clientMsg.Msg
+	msg := &clientMsg.Msg
 	var html bytes.Buffer
 
 	components.
-		MessageBox(clientMsg.Msg, true, false).
+		MessageBox(msg, true, false).
 		Render(ctx, &html)
 
 	components.
 		ContextMenu(msg, true).
+		Render(ctx, &html)
+
+	return &html
+}
+
+func handleNewChat(ctx context.Context, cht *chat.Chat) *bytes.Buffer {
+	var html bytes.Buffer
+
+	components.
+		ChatList([]*chat.Chat{cht}).
 		Render(ctx, &html)
 
 	return &html

@@ -37,6 +37,8 @@ func routs() http.Handler {
 	mux.HandleFunc("/login", chatHandler.Login)
 	mux.HandleFunc("/uploadfile", chatHandler.UploadFile)
 
+	mux.HandleFunc("POST /chat", chatHandler.CreateChat)
+
 	mux.HandleFunc("GET /message", chatHandler.GetMessage)
 	mux.HandleFunc("GET /message/edit", chatHandler.GetMessageEdit)
 	mux.HandleFunc("POST /message/edit", chatHandler.PostMessageEdit)

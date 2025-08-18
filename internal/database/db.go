@@ -41,9 +41,9 @@ func getChatsCollection() *mongo.Collection {
 	return getDatabase().Collection("chats")
 }
 
-func GetMessages(chatId bson.ObjectID) ([]message.Message, error) {
+func GetMessages(chatId bson.ObjectID) ([]*message.Message, error) {
 	coll := getMessagesCollection()
-	var results []message.Message
+	var results []*message.Message
 	data, err := coll.Find(context.TODO(), bson.M{"chat_id": chatId})
 	if err != nil {
 		return nil, err
@@ -179,7 +179,7 @@ func (self *MongodbStore) GetMessage(msgID bson.ObjectID) (*message.Message, err
 	return GetMessage(msgID)
 }
 
-func (self *MongodbStore) GetMessages(chatID bson.ObjectID) ([]message.Message, error) {
+func (self *MongodbStore) GetMessages(chatID bson.ObjectID) ([]*message.Message, error) {
 	return GetMessages(chatID)
 }
 
@@ -245,7 +245,7 @@ func (self *MongodbStore) SaveChat(cht *chat.Chat) error {
 	return nil
 }
 
-func (self *MongodbStore) GetChats() ([]chat.Chat, error) {
+func (self *MongodbStore) GetChats() ([]*chat.Chat, error) {
 	coll := getChatsCollection()
 
 	res, err := coll.Find(context.TODO(), bson.M{})
@@ -253,7 +253,7 @@ func (self *MongodbStore) GetChats() ([]chat.Chat, error) {
 		return nil, errors.Join(errors.New("Failed to get chats."), err)
 	}
 
-	var chts []chat.Chat
+	var chts []*chat.Chat
 	err = res.All(context.TODO(), &chts)
 	if err != nil {
 		return nil, errors.Join(errors.New("Failed to unmarshal chats."), err)
