@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -12,7 +13,7 @@ import (
 var sessions = make(map[SessionID]Session)
 var mutex = &sync.RWMutex{}
 
-var sessionContextKey = "username"
+var sessionIDContextKey = "sessionID"
 var sessionIDCookieKey = "sessionID"
 
 type SessionID uuid.UUID
@@ -20,6 +21,7 @@ type SessionID uuid.UUID
 type Session struct {
 	ID       SessionID
 	Username string
+	ClientID string
 }
 
 func (self *Session) GetID() string {
@@ -35,12 +37,20 @@ func New(auth AuthData) *Session {
 	defer mutex.Unlock()
 
 	if auth.Username != "" {
-		session := Session{SessionID(uuid.New()), auth.Username}
+		session := Session{SessionID(uuid.New()), auth.Username, ""}
 		sessions[session.ID] = session
 		return &session
 	}
 
 	return nil
+}
+
+func GetSessionID(ctx context.Context) SessionID {
+	if id, ok := ctx.Value(sessionIDContextKey).(SessionID); ok {
+		return id
+	}
+
+	return SessionID(uuid.Nil)
 }
 
 func GetSessionByID(sID SessionID) *Session {
@@ -57,11 +67,20 @@ func GetSessionByID(sID SessionID) *Session {
 }
 
 func GetSession(ctx context.Context) *Session {
-	if session, ok := ctx.Value(sessionContextKey).(*Session); ok {
-		return session
+	id, ok := ctx.Value(sessionIDContextKey).(SessionID)
+	if !ok {
+		return nil
 	}
 
-	return nil
+	mutex.RLock()
+	defer mutex.RUnlock()
+
+	session, ok := sessions[id]
+	if !ok {
+		return nil
+	}
+
+	return &session
 }
 
 func GetUsername(ctx context.Context) string {
@@ -82,6 +101,25 @@ func IsLoggedIn(ctx context.Context) bool {
 	return true
 }
 
+func SetClientID(sessionID SessionID, clientID string) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	session, ok := sessions[sessionID]
+	if !ok {
+		return fmt.Errorf("Session with ID %s not found.", sessionID)
+	}
+
+	session.ClientID = clientID
+	sessions[sessionID] = session
+
+	return nil
+}
+
+func Context(ctx context.Context, sessionID SessionID) context.Context {
+	return context.WithValue(ctx, sessionIDContextKey, sessionID)
+}
+
 func SetSessionCookie(w http.ResponseWriter, session *Session) {
 	cookie := http.Cookie{
 		Name:   sessionIDCookieKey,
@@ -93,23 +131,16 @@ func SetSessionCookie(w http.ResponseWriter, session *Session) {
 	http.SetCookie(w, &cookie)
 }
 
-func Context(ctx context.Context, sessionID SessionID) context.Context {
-	session := GetSessionByID(sessionID)
-	return context.WithValue(ctx, sessionContextKey, session)
-}
-
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
 		if cookie, err := r.Cookie(string(sessionIDCookieKey)); err == nil {
-
 			if sID, err := uuid.Parse(cookie.Value); err == nil {
 				ctx = Context(ctx, SessionID(sID))
 			} else {
 				log.Println(err)
 			}
-
 		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -123,12 +154,13 @@ func GetSessions() any {
 	type Session struct {
 		ID       string `json:"id"`
 		Username string `json:"username"`
+		ClientID string `json:"client_id"`
 	}
 
 	var result = make([]Session, 0, len(sessions))
 
 	for id, session := range sessions {
-		result = append(result, Session{uuid.UUID(id).String(), session.Username})
+		result = append(result, Session{uuid.UUID(id).String(), session.Username, session.ClientID})
 	}
 
 	return result

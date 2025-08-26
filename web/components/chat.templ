@@ -1,12 +1,11 @@
 package components
 
-import "github.com/ellezio/Chat-app-with-Go/internal/message"
 import "github.com/ellezio/Chat-app-with-Go/internal/session"
-import "github.com/ellezio/Chat-app-with-Go/internal/chat"
+import "github.com/ellezio/Chat-app-with-Go/internal"
 import "time"
 import "slices"
 
-templ MessageBox(msg *message.Message, oob bool, edit bool) {
+templ MessageBox(msg *internal.Message, oob bool, edit bool) {
 	{{ AuthorName := session.GetUsername(ctx) }}
 	{{ isAuthor := msg.Author == AuthorName }}
 	{{ isHidden := slices.Contains(msg.HiddenFor, AuthorName) }}
@@ -39,7 +38,7 @@ templ MessageBox(msg *message.Message, oob bool, edit bool) {
 					Deleted message
 				} else if isHidden {
 					Hidden message
-				} else if msg.Type == message.ImageMessage {
+				} else if msg.Type == internal.ImageMessage {
 					<img src={ "/files/" + msg.Content } class="w-auto h-auto max-w-full max-h-96"/>
 				} else if edit {
 					<form
@@ -63,7 +62,7 @@ templ MessageBox(msg *message.Message, oob bool, edit bool) {
 	</li>
 }
 
-templ MessagesList(msgs []*message.Message, oob bool) {
+templ MessagesList(msgs []*internal.Message, oob bool) {
 	<ul
 		id="msgs-list"
 		if oob {
@@ -95,7 +94,7 @@ templ SendBar() {
 	</div>
 }
 
-templ ChatWindow(chatID string, msgs []*message.Message) {
+templ ChatWindow(chatID string, msgs []*internal.Message) {
 	<div
 		id="chat-window"
 		class="max-w-screen-md bg-gamma h-full flex"
@@ -125,7 +124,7 @@ templ ChatWindow(chatID string, msgs []*message.Message) {
 	</div>
 }
 
-templ Page(chts []*chat.Chat, msgs []*message.Message) {
+templ Page(chts []*internal.Chat, msgs []*internal.Message) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -197,7 +196,7 @@ templ ContextMenusWrapper(oob bool) {
 	</div>
 }
 
-templ ContextMenu(msg *message.Message, oob bool) {
+templ ContextMenu(msg *internal.Message, oob bool) {
 	{{ authorName := session.GetUsername(ctx) }}
 	{{ isAuthor := msg.Author == authorName }}
 	{{ isHidden := slices.Contains(msg.HiddenFor, authorName) }}
@@ -211,7 +210,7 @@ templ ContextMenu(msg *message.Message, oob bool) {
 			hx-swap-oob="true"
 		}
 	>
-		if isAuthor && !isHidden && !msg.Deleted && msg.Type == message.TextMessage {
+		if isAuthor && !isHidden && !msg.Deleted && msg.Type == internal.TextMessage {
 			<li hx-swap="none" hx-get="/message/edit" hx-trigger="click">edit</li>
 		}
 		if true {
@@ -236,16 +235,16 @@ templ ErrorMsg(fieldId string, msg string) {
 	>{ msg }</div>
 }
 
-templ ChatList(chts []*chat.Chat) {
+templ ChatList(chts []*internal.Chat) {
 	<ul
 		id="chat-list"
 		hx-swap-oob="beforeend"
 	>
 		for _, cht := range chts {
-			<li id={ cht.ID.Hex() }>
+			<li id={ cht.ID }>
 				<button
 					type="button"
-					hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID.Hex() + `"}` }
+					hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID + `"}` }
 					ws-send
 				>{ cht.Name }</button>
 			</li>

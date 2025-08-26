@@ -7,9 +7,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/ellezio/Chat-app-with-Go/internal/database"
-	"github.com/ellezio/Chat-app-with-Go/internal/services"
 	"github.com/ellezio/Chat-app-with-Go/internal/session"
+	"github.com/ellezio/Chat-app-with-Go/internal/store"
 )
 
 func routs() http.Handler {
@@ -24,13 +23,12 @@ func routs() http.Handler {
 	filesDir := http.FileServer(http.Dir("web/files"))
 	mux.Handle("/files/", http.StripPrefix("/files/", filesDir))
 
-	database.NewDB()
+	store.NewDB()
 
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.LstdFlags)
 
-	chatService := services.NewChatService()
-	chatHandler := newChatHandler(*chatService)
+	chatHandler := newChatHandler()
 
 	mux.HandleFunc("/", chatHandler.Page)
 	mux.HandleFunc("/chatroom", chatHandler.Chatroom)
