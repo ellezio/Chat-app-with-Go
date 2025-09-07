@@ -23,7 +23,10 @@ func routs() http.Handler {
 	filesDir := http.FileServer(http.Dir("web/files"))
 	mux.Handle("/files/", http.StripPrefix("/files/", filesDir))
 
-	store.NewDB()
+	err := store.InitConn()
+	if err != nil {
+		panic(err)
+	}
 
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.LstdFlags)

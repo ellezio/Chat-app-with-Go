@@ -20,6 +20,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// TODO: add parsing data in order to validate incomming data correctness and return appropiate messages.
+
 type ChatHandler struct {
 	upgrader websocket.Upgrader
 	hub      *internal.Hub
