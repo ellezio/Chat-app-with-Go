@@ -33,19 +33,20 @@ func routs() http.Handler {
 
 	chatHandler := newChatHandler()
 
-	mux.HandleFunc("/", chatHandler.Page)
-	mux.HandleFunc("/chatroom", chatHandler.Chatroom)
-	mux.HandleFunc("/login", chatHandler.Login)
-	mux.HandleFunc("/uploadfile", chatHandler.UploadFile)
+	mux.Handle("/", OnlyLoggedIn(http.HandlerFunc(chatHandler.Page)))
+	mux.Handle("GET /login", http.HandlerFunc(chatHandler.LoginPage))
+	mux.Handle("POST /login", http.HandlerFunc(chatHandler.Login))
+	mux.Handle("/chatroom", OnlyLoggedIn(http.HandlerFunc(chatHandler.Chatroom)))
+	mux.Handle("/uploadfile", OnlyLoggedIn(http.HandlerFunc(chatHandler.UploadFile)))
 
-	mux.HandleFunc("POST /chat", chatHandler.CreateChat)
+	mux.Handle("POST /chat", OnlyLoggedIn(http.HandlerFunc(chatHandler.CreateChat)))
 
-	mux.HandleFunc("GET /message", chatHandler.GetMessage)
-	mux.HandleFunc("GET /message/edit", chatHandler.GetMessageEdit)
-	mux.HandleFunc("POST /message/edit", chatHandler.PostMessageEdit)
-	mux.HandleFunc("POST /message/pin", chatHandler.MessagePin)
-	mux.HandleFunc("POST /message/hide/{doHide}", chatHandler.MessageHide)
-	mux.HandleFunc("POST /message/delete", chatHandler.MessageDelete)
+	mux.Handle("GET /message", OnlyLoggedIn(http.HandlerFunc(chatHandler.GetMessage)))
+	mux.Handle("GET /message/edit", OnlyLoggedIn(http.HandlerFunc(chatHandler.GetMessageEdit)))
+	mux.Handle("POST /message/edit", OnlyLoggedIn(http.HandlerFunc(chatHandler.PostMessageEdit)))
+	mux.Handle("POST /message/pin", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessagePin)))
+	mux.Handle("POST /message/hide/{doHide}", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessageHide)))
+	mux.Handle("POST /message/delete", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessageDelete)))
 
 	mux.HandleFunc("/api/get-sessions", func(w http.ResponseWriter, r *http.Request) {
 		seshs := session.GetSessions()
@@ -61,4 +62,20 @@ func routs() http.Handler {
 	})
 
 	return session.Middleware(mux)
+}
+
+func OnlyLoggedIn(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		if !session.IsLoggedIn(ctx) {
+			if r.Header.Get("Hx-Request") == "true" {
+				w.Header().Add("Hx-Redirect", "/login")
+			} else {
+				http.Redirect(w, r, "/login", http.StatusFound)
+			}
+			return
+		}
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

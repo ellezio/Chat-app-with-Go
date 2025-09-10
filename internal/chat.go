@@ -23,7 +23,7 @@ const (
 	Error   MessageStatus = "error"
 )
 
-// At this moment I don't bother with it having direct database representaion
+// At this moment I don't care about it having direct database representaion
 type Message struct {
 	ID         bson.ObjectID `bson:"_id,omitempty"`
 	ChatID     bson.ObjectID `bson:"chat_id"`

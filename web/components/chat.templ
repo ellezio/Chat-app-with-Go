@@ -156,29 +156,6 @@ templ Page(chts []*internal.Chat, msgs []*internal.Message) {
 				@ctxMenuScripts()
 				@ChatWindow("", msgs)
 			</div>
-			if !session.IsLoggedIn(ctx) {
-				<div id="modal" class="flex justify-center items-center backdrop-blur-sm fixed left-0 top-0 w-screen h-screen">
-					<div class="bg-cyber-gray border-2 border-neon-pink rounded-md p-4 w-fit h-fit">
-						<form
-							id="login-form"
-							hx-post="/login"
-							hx-swap="none"
-						>
-							<div>
-								<label class="font-semibold text-neon-blue">name:</label>
-								<input
-									id="username"
-									name="username"
-									class="border-2 rounded-md border-slate-800 outline-none px-1 bg-slate-300"
-									autocomplete="off"
-								/>
-								<div id="username-error-msg"></div>
-							</div>
-							<button type="submit" class="w-full animate-pulse-neon bg-slate-400 rounded-md content-center py-1 text-slate-700 font-bold mt-2">Login</button>
-						</form>
-					</div>
-				</div>
-			}
 		</body>
 	</html>
 }
@@ -225,14 +202,6 @@ templ ContextMenu(msg *internal.Message, oob bool) {
 			<li hx-swap="none" hx-post="/message/delete" hx-trigger="click">delete</li>
 		}
 	</ul>
-}
-
-templ ErrorMsg(fieldId string, msg string) {
-	<div
-		hx-swap-oob="outerHTML"
-		id={ fieldId + `-error-msg` }
-		class="text-red-700 font-semibold mt-1"
-	>{ msg }</div>
 }
 
 templ ChatList(chts []*internal.Chat) {

@@ -44,6 +44,10 @@ func (self *ChatHandler) Page(w http.ResponseWriter, r *http.Request) {
 	components.Page(chts, nil).Render(r.Context(), w)
 }
 
+func (self *ChatHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
+	components.LoginPage().Render(r.Context(), w)
+}
+
 func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		log.Fatal(err)
@@ -60,9 +64,14 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	sesh := session.New(authData)
 	session.SetSessionCookie(w, sesh)
 
+	w.Header().Add("Hx-Redirect", "/")
+
 	w.Write([]byte("<div id='modal' hx-swap-oob='delete'></div>"))
 }
 
+// NOTE:
+// maybe it would be good to add redirect through websocket
+// and handle session validation. But that is thing for future.
 func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	if !session.IsLoggedIn(r.Context()) {
 		return
