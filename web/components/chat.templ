@@ -87,8 +87,12 @@ templ SendBar() {
 			hx-encoding="multipart/form-data"
 			hx-on::after-request="this.value = ''"
 		/>
-		<form ws-send hx-on::ws-after-send="this.reset()" class="flex gap-4 grow">
-			<textarea name="msg" class="grow resize-none bg-alpha border-2 rounded-sm border-gamma"></textarea>
+		<form
+			class="flex gap-4 grow"
+			ws-send
+			hx-on::ws-after-send="this.reset()"
+		>
+			<textarea required name="msg" class="grow resize-none bg-alpha border-2 rounded-sm border-gamma"></textarea>
 			<button type="submit" class="bg-alpha border-2 border-gamma rounded-sm">Send</button>
 		</form>
 	</div>
@@ -124,7 +128,7 @@ templ ChatWindow(chatID string, msgs []*internal.Message) {
 	</div>
 }
 
-templ Page(chts []*internal.Chat, msgs []*internal.Message) {
+templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>

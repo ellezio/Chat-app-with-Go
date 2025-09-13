@@ -21,6 +21,9 @@ import (
 )
 
 // TODO: add parsing data in order to validate incomming data correctness and return appropiate messages.
+// TODO: manage redirection mostly with HTMX (only, if possible)
+// TODO: default layout with HTMX always included to manage browser state
+// TODO: add some meaningful repsonse messages
 
 type ChatHandler struct {
 	upgrader websocket.Upgrader
@@ -39,23 +42,29 @@ func newChatHandler() *ChatHandler {
 	return h
 }
 
-func (self *ChatHandler) Page(w http.ResponseWriter, r *http.Request) {
+func (self *ChatHandler) Homepage(w http.ResponseWriter, r *http.Request) {
 	chts := self.hub.GetChats()
-	components.Page(chts, nil).Render(r.Context(), w)
+	components.Homepage(chts, nil).Render(r.Context(), w)
 }
 
 func (self *ChatHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
+	if session.IsLoggedIn(r.Context()) {
+		http.Redirect(w, r, "/", 302)
+	}
+
 	components.LoginPage().Render(r.Context(), w)
 }
 
 func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	username := r.PostForm.Get("username")
-
 	if username == "" {
+		w.WriteHeader(http.StatusUnprocessableEntity)
 		components.ErrorMsg("username", "Fill the field").Render(r.Context(), w)
 		return
 	}
@@ -65,31 +74,36 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	session.SetSessionCookie(w, sesh)
 
 	w.Header().Add("Hx-Redirect", "/")
-
-	w.Write([]byte("<div id='modal' hx-swap-oob='delete'></div>"))
 }
 
 // NOTE:
 // maybe it would be good to add redirect through websocket
 // and handle session validation. But that is thing for future.
 func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
-	if !session.IsLoggedIn(r.Context()) {
-		return
-	}
-
 	conn, err := self.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
+		return
 	}
+	defer conn.Close()
 
 	seshID := session.GetSessionID(r.Context())
 	client := NewHttpClient(seshID, conn)
-	_ = session.SetClientID(seshID, client.GetID())
+	if err = session.SetClientID(seshID, client.GetID()); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err)
+		return
+	}
+
 	username := session.GetUsername(r.Context())
 
 	log.Printf("%s Connected\r\n", username)
 
-	self.hub.ConnectClient("", client)
+	if _, err = self.hub.ConnectClient("", client); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err)
+		return
+	}
 
 	for {
 		var payload struct {
@@ -135,6 +149,7 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 		case "send-message":
 			if payload.Msg != "" {
+				// TODO: Binary messages
 				msg := internal.New(
 					chatID,
 					username,
@@ -157,22 +172,17 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 }
 
 func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
-	if !session.IsLoggedIn(r.Context()) {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
 	err := r.ParseMultipartForm(1024)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
-		// TODO htmx response
 		return
 	}
 
 	chatID := r.FormValue("chat-id")
 	cht := self.hub.GetChat(chatID)
 	if cht == nil {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -183,20 +193,23 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
-		// TODO htmx response
 		return
 	}
 	defer file.Close()
 
 	dstFile, err := os.Create("web/files/" + fileHeader.Filename)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	defer dstFile.Close()
 
 	_, err = io.Copy(dstFile, file)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	msg := internal.New(
@@ -218,7 +231,7 @@ func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 
 	if !query.Has("msg-id") {
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
@@ -227,7 +240,7 @@ func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 	msg, err := sto.GetMessage(msgId)
 	if err != nil {
 		log.Println(err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -241,7 +254,7 @@ func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
 	msg, err := sto.GetMessage(msgId)
 	if err != nil {
 		log.Println(err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -258,6 +271,7 @@ func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request)
 	chatID := r.FormValue("chat-id")
 	cht := self.hub.GetChat(chatID)
 	if cht == nil {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -265,7 +279,7 @@ func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request)
 
 	if err != nil {
 		log.Println(err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -279,7 +293,7 @@ func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request)
 }
 
 func (self *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(501)
+	w.WriteHeader(http.StatusNotImplemented)
 }
 
 func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
@@ -288,13 +302,14 @@ func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 	chatID := r.FormValue("chat-id")
 	cht := self.hub.GetChat(chatID)
 	if cht == nil {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	doHide, err := strconv.ParseBool(r.PathValue("doHide"))
 	if err != nil {
 		log.Println(err)
-		w.WriteHeader(400)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
@@ -305,7 +320,8 @@ func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 	msg, err := sto.SetHideMessage(msgId, user, doHide)
 	if err != nil {
 		log.Println(err)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 
 	clientMsg := &internal.EventData{
@@ -323,6 +339,7 @@ func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
 	chatID := r.FormValue("chat-id")
 	cht := self.hub.GetChat(chatID)
 	if cht == nil {
+		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -332,7 +349,7 @@ func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
 	msg, err := sto.DeleteMessage(msgId)
 	if err != nil {
 		log.Println(err)
-		w.WriteHeader(404)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 

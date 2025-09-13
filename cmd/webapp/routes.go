@@ -33,11 +33,12 @@ func routs() http.Handler {
 
 	chatHandler := newChatHandler()
 
-	mux.Handle("/", OnlyLoggedIn(http.HandlerFunc(chatHandler.Page)))
-	mux.Handle("GET /login", http.HandlerFunc(chatHandler.LoginPage))
-	mux.Handle("POST /login", http.HandlerFunc(chatHandler.Login))
+	mux.Handle("/", OnlyLoggedIn(http.HandlerFunc(chatHandler.Homepage)))
 	mux.Handle("/chatroom", OnlyLoggedIn(http.HandlerFunc(chatHandler.Chatroom)))
 	mux.Handle("/uploadfile", OnlyLoggedIn(http.HandlerFunc(chatHandler.UploadFile)))
+
+	mux.Handle("GET /login", http.HandlerFunc(chatHandler.LoginPage))
+	mux.Handle("POST /login", http.HandlerFunc(chatHandler.Login))
 
 	mux.Handle("POST /chat", OnlyLoggedIn(http.HandlerFunc(chatHandler.CreateChat)))
 
@@ -54,7 +55,7 @@ func routs() http.Handler {
 		if err != nil {
 			fmt.Fprintln(w, "Failed to read sessions.")
 			fmt.Fprintf(w, "%v\n", err)
-			w.WriteHeader(500)
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
