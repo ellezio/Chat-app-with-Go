@@ -144,9 +144,9 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 			var html bytes.Buffer
 			components.ChatWindow(cht.ID, msgs).Render(ctx, &html)
-			components.ChatListItem(cht, true).Render(ctx, &html)
+			components.ChatListItem(cht, "active").Render(ctx, &html)
 			if prevCht != nil {
-				components.ChatListItem(prevCht, false).Render(ctx, &html)
+				components.ChatListItem(prevCht, "").Render(ctx, &html)
 			}
 
 			client.Send(html.Bytes())
@@ -172,7 +172,7 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	self.hub.DisconnectClient(client)
+	self.hub.RemoveClient(client)
 }
 
 func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
@@ -381,6 +381,7 @@ func NewHttpClient(sessionId session.SessionID, conn *websocket.Conn) *HttpClien
 }
 
 type HttpClient struct {
+	// TODO: move id to internal chat client
 	id        string
 	SessionID session.SessionID
 
@@ -396,30 +397,38 @@ func (self *HttpClient) HandleEvent(evtType internal.EventType, evtData *interna
 
 	switch evtType {
 	case internal.Event_NewMessage:
-		msg := evtData.Msg
 
-		components.
-			MessagesList([]*internal.Message{msg}, true).
-			Render(ctx, &html)
+		if evtData.Connected {
+			msg := evtData.Msg
+			components.
+				MessagesList([]*internal.Message{msg}, true).
+				Render(ctx, &html)
 
-		children := components.ContextMenu(msg, false)
-		ctx = templ.WithChildren(ctx, children)
-		components.ContextMenusWrapper(true).Render(ctx, &html)
+			children := components.ContextMenu(msg, false)
+			ctx = templ.WithChildren(ctx, children)
+			components.ContextMenusWrapper(true).Render(ctx, &html)
+		} else {
+			components.ChatListItem(evtData.Cht, "new-message").Render(ctx, &html)
+		}
 
 	case internal.Event_UpdateMessage:
 		if evtData.OnlySender && self.id != evtData.SenderId {
 			break
 		}
 
-		msg := evtData.Msg
+		if evtData.Connected {
+			msg := evtData.Msg
 
-		components.
-			MessageBox(msg, true, false).
-			Render(ctx, &html)
+			components.
+				MessageBox(msg, true, false).
+				Render(ctx, &html)
 
-		components.
-			ContextMenu(msg, true).
-			Render(ctx, &html)
+			components.
+				ContextMenu(msg, true).
+				Render(ctx, &html)
+		} else {
+			components.ChatListItem(evtData.Cht, "new-message").Render(ctx, &html)
+		}
 	case internal.Event_NewChat:
 		cht := evtData.Cht
 

@@ -70,6 +70,7 @@ const (
 type EventData struct {
 	Msg        *Message
 	Cht        *Chat
+	Connected  bool
 	OnlySender bool
 	SenderId   string
 }
@@ -113,6 +114,7 @@ func (self *Chat) ConnectClient(client Client) {
 	self.clientsMutex.Lock()
 	defer self.clientsMutex.Unlock()
 
+	delete(self.disconnectedClients, client.GetID())
 	self.connectedClients[client.GetID()] = client
 }
 
@@ -121,6 +123,15 @@ func (self *Chat) DisconnectClient(client Client) {
 	defer self.clientsMutex.Unlock()
 
 	delete(self.connectedClients, client.GetID())
+	self.disconnectedClients[client.GetID()] = client
+}
+
+func (self *Chat) RemoveClient(client Client) {
+	self.clientsMutex.Lock()
+	defer self.clientsMutex.Unlock()
+
+	delete(self.connectedClients, client.GetID())
+	delete(self.disconnectedClients, client.GetID())
 }
 
 func (self *Chat) GetMessages() ([]*Message, error) {
@@ -138,6 +149,7 @@ func (self *Chat) GetMessages() ([]*Message, error) {
 
 func (self *Chat) NewMessage(evtData *EventData) {
 	msg := evtData.Msg
+	evtData.Cht = self
 
 	err := self.store.SaveMessage(msg)
 	if err != nil {
@@ -160,6 +172,7 @@ func (self *Chat) NewMessage(evtData *EventData) {
 			Msg:        msg,
 			OnlySender: true,
 			SenderId:   evtData.SenderId,
+			Cht:        evtData.Cht,
 		}
 
 		self.UpdateMessage(updateEvtData)
@@ -168,12 +181,13 @@ func (self *Chat) NewMessage(evtData *EventData) {
 
 func (self *Chat) UpdateMessage(evtData *EventData) {
 	msg := evtData.Msg
+	evtData.Cht = self
 
 	err := self.store.SaveMessage(msg)
 	if err != nil {
 		log.Println(err)
 		msg.Status = Error
-		evtData.OnlySender = true
+		evtData.Cht = self
 	}
 
 	self.Broadcast(Event_UpdateMessage, evtData)
@@ -183,10 +197,12 @@ func (self *Chat) Broadcast(evtType EventType, evtData *EventData) {
 	self.clientsMutex.Lock()
 	defer self.clientsMutex.Unlock()
 
+	evtData.Connected = true
 	for _, client := range self.connectedClients {
 		client.HandleEvent(evtType, evtData)
 	}
 
+	evtData.Connected = false
 	for _, client := range self.disconnectedClients {
 		client.HandleEvent(evtType, evtData)
 	}
@@ -281,6 +297,13 @@ func (self *Hub) ConnectClient(chatID string, client Client) (cht *Chat, prevCht
 	self.chatsMutex.Lock()
 	defer self.chatsMutex.Unlock()
 
+	// NOTE: temporal assessment that empty string is initial connection
+	if chatID == "" {
+		for _, cht = range self.chats {
+			cht.DisconnectClient(client)
+		}
+	}
+
 	if cht, ok := self.chats[chatID]; ok {
 		cht.ConnectClient(client)
 		cliMeta.CurrentChat = cht.ID
@@ -300,8 +323,6 @@ func (self *Hub) DisconnectClient(client Client) {
 		cliChatID := cliMeta.CurrentChat
 		self.DisconnectClientFormChat(cliChatID, client)
 	}
-
-	delete(self.clientMetas, cliID)
 }
 
 func (self *Hub) DisconnectClientFormChat(chatID string, client Client) {
@@ -315,6 +336,22 @@ func (self *Hub) DisconnectClientFormChat(chatID string, client Client) {
 	if cht, ok := self.chats[chatID]; ok {
 		cht.DisconnectClient(client)
 	}
+}
+
+func (self *Hub) RemoveClient(client Client) {
+	self.clientMetasMutex.Lock()
+	defer self.clientMetasMutex.Unlock()
+
+	self.chatsMutex.Lock()
+	defer self.chatsMutex.Unlock()
+
+	if cliMeta, ok := self.clientMetas[client.GetID()]; ok {
+		if cht, ok := self.chats[cliMeta.CurrentChat]; ok {
+			cht.RemoveClient(client)
+		}
+	}
+
+	delete(self.clientMetas, client.GetID())
 }
 
 func (self *Hub) AddChat(name string) {

@@ -216,20 +216,24 @@ templ ChatList(chts []*internal.Chat) {
 		hx-swap-oob="beforeend"
 	>
 		for _, cht := range chts {
-			@ChatListItem(cht, false)
+			@ChatListItem(cht, "")
 		}
 	</ul>
 }
 
-templ ChatListItem(cht *internal.Chat, active bool) {
+templ ChatListItem(cht *internal.Chat, status string) {
 	<li
 		id={ "chat-id-" + cht.ID }
 		hx-swap-oob
-		class={ "chat-item", templ.KV("bg-active", active) }
+		class={
+			"chat-item",
+			templ.KV("bg-active", status == "active"),
+			templ.KV("bg-new-message", status == "new-message"),
+		}
 	>
 		<button
 			type="button"
-			if !active {
+			if status != "active" {
 				hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID + `"}` }
 				ws-send
 			}
