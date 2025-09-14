@@ -99,7 +99,7 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("%s Connected\r\n", username)
 
-	if _, err = self.hub.ConnectClient("", client); err != nil {
+	if _, _, err = self.hub.ConnectClient("", client); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println(err)
 		return
@@ -128,7 +128,7 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 		switch payload.Type {
 		case "change-chat":
-			cht, err := self.hub.ConnectClient(chatID, client)
+			cht, prevCht, err := self.hub.ConnectClient(chatID, client)
 			if err != nil {
 				log.Printf("Failed to connect client. %v\n", err)
 				return
@@ -144,6 +144,10 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 			var html bytes.Buffer
 			components.ChatWindow(cht.ID, msgs).Render(ctx, &html)
+			components.ChatListItem(cht, true).Render(ctx, &html)
+			if prevCht != nil {
+				components.ChatListItem(prevCht, false).Render(ctx, &html)
+			}
 
 			client.Send(html.Bytes())
 

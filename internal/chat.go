@@ -256,9 +256,9 @@ func (self *Hub) GetChat(chatID string) *Chat {
 	return nil
 }
 
-func (self *Hub) ConnectClient(chatID string, client Client) (*Chat, error) {
+func (self *Hub) ConnectClient(chatID string, client Client) (cht *Chat, prevCht *Chat, err error) {
 	if client == nil {
-		return nil, errors.New("Client cannot be nil.")
+		return nil, nil, errors.New("Client cannot be nil.")
 	}
 
 	self.clientMetasMutex.Lock()
@@ -276,6 +276,7 @@ func (self *Hub) ConnectClient(chatID string, client Client) (*Chat, error) {
 	}
 
 	self.DisconnectClientFormChat(cliMeta.CurrentChat, client)
+	prevCht = self.chats[cliMeta.CurrentChat]
 
 	self.chatsMutex.Lock()
 	defer self.chatsMutex.Unlock()
@@ -283,10 +284,10 @@ func (self *Hub) ConnectClient(chatID string, client Client) (*Chat, error) {
 	if cht, ok := self.chats[chatID]; ok {
 		cht.ConnectClient(client)
 		cliMeta.CurrentChat = cht.ID
-		return cht, nil
+		return cht, prevCht, nil
 	}
 
-	return nil, nil
+	return nil, nil, nil
 }
 
 func (self *Hub) DisconnectClient(client Client) {

@@ -101,7 +101,6 @@ templ SendBar() {
 templ ChatWindow(chatID string, msgs []*internal.Message) {
 	<div
 		id="chat-window"
-		class="max-w-screen-md bg-gamma h-full flex"
 		hx-swap-oob="innerHTML"
 	>
 		<div
@@ -134,8 +133,6 @@ templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 		<head>
 			<meta charset="UTF-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-			<link href="/css/containers.css" rel="stylesheet"/>
-			<link href="/css/chat.css" rel="stylesheet"/>
 			<link href="/css/output.css" rel="stylesheet"/>
 			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.6/dist/htmx.min.js" integrity="sha384-Akqfrbj/HpNVo8k11SXBb6TlBWmXXlYQrCSqEWmyKJe+hDm3Z/B2WVG4smwBkRVm" crossorigin="anonymous"></script>
 			<script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" integrity="sha384-0RHpPqZ4QLJXG/ALtieEL/G+NuAI98LYSkT9s6FgciveUhAdo/6wab5NU1tm2Bxs" crossorigin="anonymous"></script>
@@ -158,7 +155,12 @@ templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 					</form>
 				</div>
 				@ctxMenuScripts()
-				@ChatWindow("", msgs)
+				<div
+					id="chat-window"
+					class="max-w-screen-md w-full bg-gamma h-full flex"
+				>
+					Choose chat
+				</div>
 			</div>
 		</body>
 	</html>
@@ -214,15 +216,23 @@ templ ChatList(chts []*internal.Chat) {
 		hx-swap-oob="beforeend"
 	>
 		for _, cht := range chts {
-			<li id={ cht.ID }>
-				<button
-					type="button"
-					hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID + `"}` }
-					ws-send
-				>{ cht.Name }</button>
-			</li>
+			@ChatListItem(cht, false)
 		}
 	</ul>
+}
+
+templ ChatListItem(cht *internal.Chat, active bool) {
+	<li
+		id={ "chat-id-" + cht.ID }
+		hx-swap-oob
+		class={ "chat-item", templ.KV("bg-active", active) }
+	>
+		<button
+			type="button"
+			hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID + `"}` }
+			ws-send
+		>{ cht.Name }</button>
+	</li>
 }
 
 templ ctxMenuScripts() {
