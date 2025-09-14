@@ -229,8 +229,10 @@ templ ChatListItem(cht *internal.Chat, active bool) {
 	>
 		<button
 			type="button"
-			hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID + `"}` }
-			ws-send
+			if !active {
+				hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID + `"}` }
+				ws-send
+			}
 		>{ cht.Name }</button>
 	</li>
 }
