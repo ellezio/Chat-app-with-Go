@@ -233,6 +233,7 @@ templ ChatListItem(cht *internal.Chat, status string) {
 	>
 		<button
 			type="button"
+			class="w-full text-start"
 			if status != "active" {
 				hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID + `"}` }
 				ws-send
