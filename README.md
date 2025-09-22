@@ -1,9 +1,9 @@
 ## TODOs
 ### Features
-- [ ] Multiple clients:
-    - [ ] CLI
-    - [ ] Desktop App
-    - [ ] Web Client
+#### Multiple clients
+- [ ] CLI
+- [ ] Desktop App
+- [X] Web Client
 
 ### Architecure
 - [ ] Queue for incomming messages to process - RabbitMQ
