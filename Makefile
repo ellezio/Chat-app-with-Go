@@ -11,7 +11,8 @@ all:
 	$(MAKE) run
 
 run:
-	@MONGODB_URI=$(MONGODB_URI) go run ./cmd/webapp
+	@MONGODB_URI=$(MONGODB_URI) go run ./cmd/webapp &
+	@MONGODB_URI=$(MONGODB_URI) go run ./cmd/chat-server
 
 templ_watch:
 	@templ generate --watch

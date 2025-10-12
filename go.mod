@@ -6,6 +6,7 @@ require (
 	github.com/a-h/templ v0.3.898
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/rabbitmq/amqp091-go v1.10.0
 	go.mongodb.org/mongo-driver/v2 v2.2.2
 )
 

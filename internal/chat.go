@@ -1,13 +1,16 @@
 package internal
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"maps"
 	"slices"
 	"sync"
 	"time"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -25,16 +28,16 @@ const (
 
 // At this moment I don't care about it having direct database representaion
 type Message struct {
-	ID         bson.ObjectID `bson:"_id,omitempty"`
-	ChatID     bson.ObjectID `bson:"chat_id"`
-	Author     string        `bson:"author"`
-	Content    string        `bson:"content"`
-	Type       MessageType   `bson:"type"`
-	CreatedAt  time.Time     `bson:"created_at"`
-	ModifiedAt time.Time     `bson:"modified_at"`
-	Status     MessageStatus `bson:"status"`
-	HiddenFor  []string      `bson:"hidden_for"`
-	Deleted    bool          `bson:"deleted"`
+	ID         bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	ChatID     bson.ObjectID `bson:"chat_id"       json:"chat_id"`
+	Author     string        `bson:"author"        json:"author"`
+	Content    string        `bson:"content"       json:"content"`
+	Type       MessageType   `bson:"type"          json:"type"`
+	CreatedAt  time.Time     `bson:"created_at"    json:"created_at"`
+	ModifiedAt time.Time     `bson:"modified_at"   json:"modified_at"`
+	Status     MessageStatus `bson:"status"        json:"status"`
+	HiddenFor  []string      `bson:"hidden_for"    json:"hidden_for"`
+	Deleted    bool          `bson:"deleted"       json:"deleted"`
 }
 
 func New(chatID string, author, content string, typ MessageType) *Message {
@@ -64,8 +67,74 @@ type EventType int
 const (
 	Event_NewMessage EventType = iota
 	Event_UpdateMessage
+	Event_EditMessage
+	Event_HideMessage
+	Event_DeleteMessage
+	Event_PinMessage
 	Event_NewChat
 )
+
+type MessageEventDetails struct {
+	ID      string        `json:"id"`
+	ChatID  string        `json:"chat-id"`
+	UserID  string        `json:"user-id"`
+	Content string        `json:"content"`
+	Type    MessageType   `json:"type"`
+	Status  MessageStatus `json:"status"`
+	Hidden  bool          `json:"hidden"`
+	Deleted bool          `json:"deleted"`
+}
+
+type ChatEventDetails struct{}
+
+type ChatEvent struct {
+	Type    EventType `json:"type"`
+	ChatID  string    `json:"chat-id"`
+	UserID  string    `json:"user-id"`
+	Details any       `json:"details"`
+}
+
+func (ce *ChatEvent) UnmarshalJSON(data []byte) error {
+	var temp struct {
+		Type    EventType       `json:"type"`
+		ChatID  string          `json:"chat-id"`
+		UserID  string          `json:"user-id"`
+		Details json.RawMessage `json:"details"`
+	}
+
+	if err := json.Unmarshal(data, &temp); err != nil {
+		return err
+	}
+
+	ce.Type = temp.Type
+	ce.ChatID = temp.ChatID
+	ce.UserID = temp.UserID
+
+	switch temp.Type {
+	case Event_NewMessage, Event_EditMessage, Event_HideMessage, Event_DeleteMessage, Event_PinMessage:
+		var details MessageEventDetails
+		if err := json.Unmarshal(temp.Details, &details); err != nil {
+			return err
+		}
+		ce.Details = details
+	case Event_UpdateMessage:
+		var details Message
+		if err := json.Unmarshal(temp.Details, &details); err != nil {
+			return err
+		}
+		ce.Details = details
+	case Event_NewChat:
+		var details Chat
+		if err := json.Unmarshal(temp.Details, &details); err != nil {
+			return err
+		}
+		ce.Details = &details
+	default:
+		return fmt.Errorf("Event \"%v\" not recognised", temp.Type)
+	}
+
+	return nil
+}
 
 type EventData struct {
 	Msg        *Message
@@ -87,6 +156,10 @@ type Store interface {
 	GetMessage(msgID string) (*Message, error)
 	GetMessages(chatID string) ([]*Message, error)
 	SaveMessage(msg *Message) error
+
+	UpdateMessageContent(id string, content string) (*Message, error)
+	SetHideMessage(id string, user string, value bool) (*Message, error)
+	DeleteMessage(id string) (*Message, error)
 }
 
 type Chat struct {
@@ -98,6 +171,8 @@ type Chat struct {
 	connectedClients    map[string]Client
 	disconnectedClients map[string]Client
 	clientsMutex        sync.Mutex
+
+	publishEvent func(event ChatEvent) error
 }
 
 func NewChat(name string, store Store) *Chat {
@@ -147,50 +222,88 @@ func (self *Chat) GetMessages() ([]*Message, error) {
 	return msgs, nil
 }
 
-func (self *Chat) NewMessage(evtData *EventData) {
-	msg := evtData.Msg
-	evtData.Cht = self
-
-	err := self.store.SaveMessage(msg)
-	if err != nil {
-		log.Println(err)
-		msg.Status = Error
-		evtData.OnlySender = true
+func (self *Chat) NewMessage(message *Message, authorID string) error {
+	details := MessageEventDetails{
+		ID:      message.ID.Hex(),
+		ChatID:  message.ChatID.Hex(),
+		UserID:  message.Author,
+		Content: message.Content,
+		Type:    message.Type,
+		Status:  message.Status,
+		Hidden:  false,
+		Deleted: message.Deleted,
 	}
 
-	self.Broadcast(Event_NewMessage, evtData)
-
-	if msg.Status == Sending {
-		msg.Status = Sent
-		err := self.store.SaveMessage(msg)
-		if err != nil {
-			log.Println(err)
-			msg.Status = Error
-		}
-
-		updateEvtData := &EventData{
-			Msg:        msg,
-			OnlySender: true,
-			SenderId:   evtData.SenderId,
-			Cht:        evtData.Cht,
-		}
-
-		self.UpdateMessage(updateEvtData)
+	event := ChatEvent{
+		Type:    Event_NewMessage,
+		ChatID:  self.ID,
+		UserID:  authorID,
+		Details: details,
 	}
+
+	return self.publishEvent(event)
 }
 
-func (self *Chat) UpdateMessage(evtData *EventData) {
-	msg := evtData.Msg
-	evtData.Cht = self
-
-	err := self.store.SaveMessage(msg)
-	if err != nil {
-		log.Println(err)
-		msg.Status = Error
-		evtData.Cht = self
+func (self *Chat) UpdateMessage(message *Message, userID string) error {
+	event := ChatEvent{
+		Type:    Event_UpdateMessage,
+		ChatID:  self.ID,
+		UserID:  userID,
+		Details: message,
 	}
 
-	self.Broadcast(Event_UpdateMessage, evtData)
+	return self.publishEvent(event)
+}
+
+func (self *Chat) UpdateMessageContent(id string, content string) error {
+	details := MessageEventDetails{
+		ID:      id,
+		ChatID:  self.ID,
+		Content: content,
+	}
+
+	event := ChatEvent{
+		Type:    Event_EditMessage,
+		ChatID:  self.ID,
+		UserID:  "",
+		Details: details,
+	}
+
+	return self.publishEvent(event)
+}
+
+func (self *Chat) SetHideMessage(id string, user string, hide bool) error {
+	details := MessageEventDetails{
+		ID:     id,
+		ChatID: self.ID,
+		UserID: user,
+		Hidden: hide,
+	}
+
+	event := ChatEvent{
+		Type:    Event_HideMessage,
+		ChatID:  self.ID,
+		UserID:  user,
+		Details: details,
+	}
+
+	return self.publishEvent(event)
+}
+
+func (self *Chat) DeleteMessage(id string) error {
+	details := MessageEventDetails{
+		ID:      id,
+		ChatID:  self.ID,
+		Deleted: true,
+	}
+
+	event := ChatEvent{
+		Type:    Event_DeleteMessage,
+		ChatID:  self.ID,
+		Details: details,
+	}
+
+	return self.publishEvent(event)
 }
 
 func (self *Chat) Broadcast(evtType EventType, evtData *EventData) {
@@ -221,6 +334,9 @@ type Hub struct {
 
 	chats      map[string]*Chat
 	chatsMutex sync.Mutex
+
+	amqpConn *amqp.Connection
+	amqpChan *amqp.Channel
 }
 
 func NewHub(store Store) *Hub {
@@ -235,6 +351,155 @@ func NewHub(store Store) *Hub {
 	}
 }
 
+func (self *Hub) Start() error {
+	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	if err != nil {
+		return fmt.Errorf("Failed to connect to RabbitMQ")
+	}
+
+	ch, err := conn.Channel()
+	if err != nil {
+		return fmt.Errorf("Failed to open a channel")
+	}
+
+	_, err = ch.QueueDeclare(
+		"chat_messages", // name
+		true,            // durable
+		false,           // delete when unused
+		false,           // exclusive
+		false,           // no-wait
+		nil,             // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("Failed to declare a queue")
+	}
+
+	err = ch.ExchangeDeclare(
+		"chat_notifications", // name
+		"fanout",             // type
+		true,                 // durable
+		false,                // auto-deleted
+		false,                // internal
+		false,                // no-wait
+		nil,                  // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("Failed to declare an exchange")
+	}
+
+	q, err := ch.QueueDeclare(
+		"",    // name
+		false, // durable
+		false, // delete when unused
+		true,  // exclusive
+		false, // no-wait
+		nil,   // arguments
+	)
+	if err != nil {
+		return fmt.Errorf("Failed to declare a queue")
+	}
+
+	err = ch.QueueBind(
+		q.Name,               // queue name
+		"",                   // routing key
+		"chat_notifications", // exchange
+		false,
+		nil,
+	)
+	if err != nil {
+		return fmt.Errorf("Failed to bind a queue")
+	}
+
+	msgs, err := ch.Consume(
+		q.Name, // queue
+		"",     // consumer
+		true,   // auto-ack
+		false,  // exclusive
+		false,  // no-local
+		false,  // no-wait
+		nil,    // args
+	)
+	if err != nil {
+		return fmt.Errorf("Failed to register a consumer")
+	}
+
+	go func() {
+		for d := range msgs {
+			log.Printf(" [x] %s", d.Body)
+			var event ChatEvent
+
+			var temp struct {
+				Type    EventType       `json:"type"`
+				ChatID  string          `json:"chat-id"`
+				UserID  string          `json:"user-id"`
+				Details json.RawMessage `json:"details"`
+			}
+
+			if err := json.Unmarshal(d.Body, &temp); err != nil {
+				log.Printf("Failed to parsed delivery message: %v", err)
+				continue
+			}
+
+			event.Type = temp.Type
+			event.ChatID = temp.ChatID
+			event.UserID = temp.UserID
+
+			switch event.Type {
+			case Event_NewChat:
+				var cht *Chat
+				if err = json.Unmarshal(temp.Details, &cht); err != nil {
+					log.Printf("Cannot process entity with type \"%T\" while adding chat", event.Details)
+					continue
+				}
+
+				cht.publishEvent = self.PublishEvent
+				cht.store = self.store
+				cht.connectedClients = make(map[string]Client)
+				cht.disconnectedClients = make(map[string]Client)
+
+				self.chatsMutex.Lock()
+				self.chats[cht.ID] = cht
+				self.chatsMutex.Unlock()
+
+				evtData := &EventData{
+					Cht: cht,
+				}
+
+				self.clientMetasMutex.Lock()
+				for _, cliMeta := range self.clientMetas {
+					cliMeta.Client.HandleEvent(Event_NewChat, evtData)
+				}
+				self.clientMetasMutex.Unlock()
+			default:
+				cht := self.GetChat(event.ChatID)
+				if cht == nil {
+					log.Printf("Chat ID: %q, no clients in this hub, ignoring message")
+					return
+				}
+
+				var msg Message
+				if err = json.Unmarshal(temp.Details, &msg); err != nil {
+					log.Printf("Cannot process entity with type \"%T\" while broadcasting message", event.Details)
+					continue
+				}
+
+				evt := &EventData{
+					Msg:      &msg,
+					SenderId: event.UserID,
+					Cht:      cht,
+				}
+
+				cht.Broadcast(event.Type, evt)
+			}
+		}
+	}()
+
+	self.amqpConn = conn
+	self.amqpChan = ch
+
+	return err
+}
+
 func (self *Hub) LoadChatsFromStore() error {
 	if self.store == nil {
 		return errors.New("Store not set.")
@@ -247,9 +512,33 @@ func (self *Hub) LoadChatsFromStore() error {
 
 	self.chatsMutex.Lock()
 	for _, cht := range chts {
+		cht.publishEvent = self.PublishEvent
 		self.chats[cht.ID] = cht
 	}
 	self.chatsMutex.Unlock()
+
+	return nil
+}
+
+func (self *Hub) PublishEvent(event ChatEvent) error {
+	body, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("Failed to send publish message: %v", err)
+	}
+
+	err = self.amqpChan.Publish(
+		"",              // exchange
+		"chat_messages", // routing key
+		false,           // mandatory
+		false,           // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        body,
+		})
+
+	if err != nil {
+		return fmt.Errorf("Failed to send publish message: %v", err)
+	}
 
 	return nil
 }
@@ -357,23 +646,10 @@ func (self *Hub) RemoveClient(client Client) {
 func (self *Hub) AddChat(name string) {
 	cht := NewChat(name, self.store)
 
-	if self.store != nil {
-		self.store.SaveChat(cht)
+	event := ChatEvent{
+		Type:    Event_NewChat,
+		Details: cht,
 	}
 
-	self.clientMetasMutex.Lock()
-	defer self.clientMetasMutex.Unlock()
-
-	self.chatsMutex.Lock()
-	defer self.chatsMutex.Unlock()
-
-	self.chats[cht.ID] = cht
-
-	evtData := &EventData{
-		Cht: cht,
-	}
-
-	for _, cliMeta := range self.clientMetas {
-		cliMeta.Client.HandleEvent(Event_NewChat, evtData)
-	}
+	self.PublishEvent(event)
 }

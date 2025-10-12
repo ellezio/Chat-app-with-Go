@@ -31,7 +31,11 @@ func routs() http.Handler {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.LstdFlags)
 
-	chatHandler := newChatHandler()
+	chatHandler, hub := newChatHandler()
+	err = hub.Start()
+	if err != nil {
+		panic(err)
+	}
 
 	mux.Handle("/", OnlyLoggedIn(http.HandlerFunc(chatHandler.Homepage)))
 	mux.Handle("/chatroom", OnlyLoggedIn(http.HandlerFunc(chatHandler.Chatroom)))

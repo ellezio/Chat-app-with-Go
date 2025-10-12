@@ -16,7 +16,6 @@ import (
 	"github.com/ellezio/Chat-app-with-Go/internal/session"
 	"github.com/ellezio/Chat-app-with-Go/internal/store"
 	"github.com/ellezio/Chat-app-with-Go/web/components"
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -32,14 +31,14 @@ type ChatHandler struct {
 
 var sto = &store.MongodbStore{}
 
-func newChatHandler() *ChatHandler {
+func newChatHandler() (*ChatHandler, *internal.Hub) {
 	h := &ChatHandler{
 		upgrader: websocket.Upgrader{},
 		hub:      internal.NewHub(sto),
 	}
 
 	h.hub.LoadChatsFromStore()
-	return h
+	return h, h.hub
 }
 
 func (self *ChatHandler) Homepage(w http.ResponseWriter, r *http.Request) {
@@ -88,14 +87,13 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	seshID := session.GetSessionID(r.Context())
-	client := NewHttpClient(seshID, conn)
+	username := session.GetUsername(r.Context())
+	client := NewHttpClient(seshID, conn, username)
 	if err = session.SetClientID(seshID, client.GetID()); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println(err)
 		return
 	}
-
-	username := session.GetUsername(r.Context())
 
 	log.Printf("%s Connected\r\n", username)
 
@@ -161,13 +159,8 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 					internal.TextMessage,
 				)
 
-				evtData := &internal.EventData{
-					Msg:      msg,
-					SenderId: client.GetID(),
-				}
-
 				cht := self.hub.GetChat(chatID)
-				cht.NewMessage(evtData)
+				cht.NewMessage(msg, client.GetID())
 			}
 		}
 	}
@@ -223,12 +216,7 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		internal.ImageMessage,
 	)
 
-	clientMsg := &internal.EventData{
-		Msg:      msg,
-		SenderId: sesh.ClientID,
-	}
-
-	cht.NewMessage(clientMsg)
+	cht.NewMessage(msg, sesh.ClientID)
 }
 
 func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
@@ -279,21 +267,12 @@ func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	msg, err := sto.UpdateMessageContent(msgId, msgContent)
-
+	err := cht.UpdateMessageContent(msgId, msgContent)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	sesh := session.GetSession(r.Context())
-	clientMsg := &internal.EventData{
-		Msg:      msg,
-		SenderId: sesh.ClientID,
-	}
-
-	cht.UpdateMessage(clientMsg)
 }
 
 func (self *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) {
@@ -321,20 +300,12 @@ func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 	sesh := session.GetSession(r.Context())
 	user := sesh.Username
 
-	msg, err := sto.SetHideMessage(msgId, user, doHide)
+	err = cht.SetHideMessage(msgId, user, doHide)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	clientMsg := &internal.EventData{
-		Msg:        msg,
-		SenderId:   sesh.ClientID,
-		OnlySender: true,
-	}
-
-	cht.UpdateMessage(clientMsg)
 }
 
 func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
@@ -348,21 +319,14 @@ func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msgId := r.FormValue("msg-id")
-	sesh := session.GetSession(r.Context())
 
-	msg, err := sto.DeleteMessage(msgId)
+	err := cht.DeleteMessage(msgId)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	clientMsg := &internal.EventData{
-		Msg:      msg,
-		SenderId: sesh.ClientID,
-	}
-
-	cht.UpdateMessage(clientMsg)
 }
 
 func (self *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
@@ -371,9 +335,9 @@ func (self *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	self.hub.AddChat(chatName)
 }
 
-func NewHttpClient(sessionId session.SessionID, conn *websocket.Conn) *HttpClient {
+func NewHttpClient(sessionId session.SessionID, conn *websocket.Conn, name string) *HttpClient {
 	return &HttpClient{
-		id:        uuid.NewString(),
+		id:        name,
 		SessionID: sessionId,
 		conn:      conn,
 		connMux:   sync.Mutex{},
@@ -411,7 +375,12 @@ func (self *HttpClient) HandleEvent(evtType internal.EventType, evtData *interna
 			components.ChatListItem(evtData.Cht, "new-message").Render(ctx, &html)
 		}
 
-	case internal.Event_UpdateMessage:
+	case
+		internal.Event_UpdateMessage,
+		internal.Event_DeleteMessage,
+		internal.Event_EditMessage,
+		internal.Event_HideMessage,
+		internal.Event_PinMessage:
 		if evtData.OnlySender && self.id != evtData.SenderId {
 			break
 		}
