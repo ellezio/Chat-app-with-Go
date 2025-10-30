@@ -52,6 +52,7 @@ func routs() http.Handler {
 	mux.Handle("POST /message/pin", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessagePin)))
 	mux.Handle("POST /message/hide/{doHide}", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessageHide)))
 	mux.Handle("POST /message/delete", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessageDelete)))
+	mux.Handle("POST /chat/{chat_id}/messages", OnlyLoggedIn(http.HandlerFunc(chatHandler.NewMessage)))
 
 	mux.HandleFunc("/api/get-sessions", func(w http.ResponseWriter, r *http.Request) {
 		seshs := session.GetSessions()

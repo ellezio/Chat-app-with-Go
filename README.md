@@ -3,12 +3,14 @@
 #### Multiple clients
 - [ ] CLI
 - [ ] Desktop App
-- [X] Web Client
+- [/] Web Client
+    - [ ] WebSocket reconnecting
 
 ### Architecure
 - [X] Queue for incomming messages to process - RabbitMQ
-- [ ] Caching - Redis | Valkey
+- [ ] Caching - Redis
 - [ ] File server for attachments
+- [ ] Api Auth
 
 ### Telemetry
 - [ ] Logs monitoring - ELK stack

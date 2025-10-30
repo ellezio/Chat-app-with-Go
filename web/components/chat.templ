@@ -77,7 +77,7 @@ templ MessagesList(msgs []*internal.Message, oob bool) {
 	</ul>
 }
 
-templ SendBar() {
+templ SendBar(chatID string) {
 	<div class="flex gap-4">
 		<input
 			type="file"
@@ -89,8 +89,9 @@ templ SendBar() {
 		/>
 		<form
 			class="flex gap-4 grow"
-			ws-send
-			hx-on::ws-after-send="this.reset()"
+			hx-post={ "/chat/" + chatID + "/messages" }
+			hx-on::after-request="this.reset()"
+			hx-swap="none"
 		>
 			<textarea required name="msg" class="grow resize-none bg-alpha border-2 rounded-sm border-gamma"></textarea>
 			<button type="submit" class="bg-alpha border-2 border-gamma rounded-sm">Send</button>
@@ -120,7 +121,7 @@ templ ChatWindow(chatID string, msgs []*internal.Message) {
 				class="h-fit py-4 px-2 bg-beta"
 				hx-vals={ `{"msg-type": "send-message", "chat-id": "` + chatID + `"}` }
 			>
-				@SendBar()
+				@SendBar(chatID)
 			</div>
 		</div>
 		@msgScroller()

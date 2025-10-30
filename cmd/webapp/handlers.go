@@ -75,9 +75,6 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Hx-Redirect", "/")
 }
 
-// NOTE:
-// maybe it would be good to add redirect through websocket
-// and handle session validation. But that is thing for future.
 func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	conn, err := self.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -148,24 +145,26 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 			}
 
 			client.Send(html.Bytes())
-
-		case "send-message":
-			if payload.Msg != "" {
-				// TODO: Binary messages
-				msg := internal.New(
-					chatID,
-					username,
-					payload.Msg,
-					internal.TextMessage,
-				)
-
-				cht := self.hub.GetChat(chatID)
-				cht.NewMessage(msg, client.GetID())
-			}
 		}
 	}
 
 	self.hub.RemoveClient(client)
+}
+
+func (self *ChatHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
+	chatID := r.PathValue("chat_id")
+	msgContent := r.FormValue("msg")
+	client := session.GetSession(r.Context())
+
+	msg := internal.New(
+		chatID,
+		client.Username,
+		msgContent,
+		internal.TextMessage,
+	)
+
+	cht := self.hub.GetChat(chatID)
+	cht.NewMessage(msg, client.GetID())
 }
 
 func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
