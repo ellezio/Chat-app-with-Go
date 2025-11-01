@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/ellezio/Chat-app-with-Go/internal"
@@ -31,6 +32,8 @@ func InitConn() error {
 
 	opts := options.Client().ApplyURI(uri)
 	client, err = mongo.Connect(opts)
+
+	initCacheConnection()
 
 	return err
 }
@@ -78,6 +81,8 @@ func (self *MongodbStore) SetHideMessage(id string, user string, value bool) (*i
 		return nil, errors.Join(ErrDecodeMessage, err)
 	}
 
+	cacheUpdateMessage(&result)
+
 	return &result, nil
 }
 
@@ -103,6 +108,8 @@ func (self *MongodbStore) DeleteMessage(id string) (*internal.Message, error) {
 		return nil, errors.Join(ErrDecodeMessage, err)
 	}
 
+	cacheUpdateMessage(&result)
+
 	return &result, nil
 }
 
@@ -125,6 +132,12 @@ func (self *MongodbStore) GetMessage(msgID string) (*internal.Message, error) {
 }
 
 func (self *MongodbStore) GetMessages(chatID string) ([]*internal.Message, error) {
+	msgs := cacheGetMessages(chatID)
+	if len(msgs) > 0 {
+		log.Println("CACHE HIT - get messages")
+		return msgs, nil
+	}
+
 	id, err := bson.ObjectIDFromHex(chatID)
 	if err != nil {
 		return nil, errors.Join(ErrParseID, err)
@@ -141,6 +154,8 @@ func (self *MongodbStore) GetMessages(chatID string) ([]*internal.Message, error
 	if err != nil {
 		return nil, errors.Join(ErrDecodeMessage, err)
 	}
+
+	cachePopulateMessages(chatID, results)
 
 	return results, nil
 }
@@ -160,6 +175,7 @@ func (self *MongodbStore) SaveMessage(msg *internal.Message) error {
 
 		if id, ok := res.InsertedID.(bson.ObjectID); ok {
 			msg.ID = id
+			cacheInsertMessage(msg)
 		} else {
 			return errors.New("failed to read inserted message ID")
 		}
@@ -179,6 +195,8 @@ func (self *MongodbStore) SaveMessage(msg *internal.Message) error {
 		if res.MatchedCount == 0 {
 			return errors.New("update 0 messages")
 		}
+
+		cacheUpdateMessage(msg)
 	}
 
 	return nil
@@ -205,6 +223,8 @@ func (self *MongodbStore) UpdateMessageContent(id string, content string) (*inte
 	if err != nil {
 		return nil, errors.Join(ErrDecodeMessage, err)
 	}
+
+	cacheUpdateMessage(&result)
 
 	return &result, nil
 }

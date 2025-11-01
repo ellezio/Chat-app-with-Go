@@ -40,6 +40,14 @@ type Message struct {
 	Deleted    bool          `bson:"deleted"       json:"deleted"`
 }
 
+func (m *Message) MarshalBinary() ([]byte, error) {
+	return json.Marshal(m)
+}
+
+func (m *Message) UnmarshalBinary(data []byte) error {
+	return json.Unmarshal(data, m)
+}
+
 func New(chatID string, author, content string, typ MessageType) *Message {
 	t := time.Now()
 
