@@ -64,7 +64,7 @@ func initCacheConnection() {
 
 func cacheInsertMessage(msg *internal.Message) {
 	k := "chat:" + msg.ChatID.Hex() + ":messages"
-	r, err := cache.LPushX(context.Background(), k, msg).Result()
+	r, err := cache.RPushX(context.Background(), k, msg).Result()
 	if err != nil {
 		log.Println(err)
 		return
