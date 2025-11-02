@@ -68,8 +68,14 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authData := session.AuthData{Username: username}
-	sesh := session.New(authData)
+	userData := session.UserData{
+		ID:   "",
+		Name: username,
+	}
+
+	sesh := session.New()
+	sesh.User = userData
+	sesh.Save()
 	session.SetSessionCookie(w, sesh)
 
 	w.Header().Add("Hx-Redirect", "/")
@@ -83,16 +89,12 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	seshID := session.GetSessionID(r.Context())
-	username := session.GetUsername(r.Context())
-	client := NewHttpClient(seshID, conn, username)
-	if err = session.SetClientID(seshID, client.GetID()); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Println(err)
-		return
-	}
+	sesh := session.GetSession(r.Context())
+	client := NewHttpClient(sesh.ID, conn, sesh.User.Name)
+	sesh.User.ID = client.GetID()
+	sesh.Save()
 
-	log.Printf("%s Connected\r\n", username)
+	log.Printf("%s Connected\r\n", sesh.User.Name)
 
 	if _, _, err = self.hub.ConnectClient("", client); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -135,7 +137,7 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			ctx := session.Context(context.Background(), client.SessionID)
+			ctx := session.ContextWithSessionID(context.Background(), client.SessionID)
 
 			var html bytes.Buffer
 			components.ChatWindow(cht.ID, msgs).Render(ctx, &html)
@@ -154,17 +156,17 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 func (self *ChatHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 	chatID := r.PathValue("chat_id")
 	msgContent := r.FormValue("msg")
-	client := session.GetSession(r.Context())
+	sesh := session.GetSession(r.Context())
 
 	msg := internal.New(
 		chatID,
-		client.Username,
+		sesh.User.Name,
 		msgContent,
 		internal.TextMessage,
 	)
 
 	cht := self.hub.GetChat(chatID)
-	cht.NewMessage(msg, client.GetID())
+	cht.NewMessage(msg, sesh.User.ID)
 }
 
 func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +185,6 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sesh := session.GetSession(r.Context())
-	username := sesh.Username
 
 	file, fileHeader, err := r.FormFile("file")
 	if err != nil {
@@ -210,12 +211,12 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	msg := internal.New(
 		cht.ID,
-		username,
+		sesh.User.Name,
 		fileHeader.Filename,
 		internal.ImageMessage,
 	)
 
-	cht.NewMessage(msg, sesh.ClientID)
+	cht.NewMessage(msg, sesh.User.ID)
 }
 
 func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
@@ -297,9 +298,8 @@ func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 
 	msgId := r.FormValue("msg-id")
 	sesh := session.GetSession(r.Context())
-	user := sesh.Username
 
-	err = cht.SetHideMessage(msgId, user, doHide)
+	err = cht.SetHideMessage(msgId, sesh.User.Name, doHide)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -355,7 +355,7 @@ type HttpClient struct {
 func (self *HttpClient) GetID() string { return self.id }
 
 func (self *HttpClient) HandleEvent(evtType internal.EventType, evtData *internal.EventData) {
-	ctx := session.Context(context.Background(), self.SessionID)
+	ctx := session.ContextWithSessionID(context.Background(), self.SessionID)
 	var html bytes.Buffer
 
 	switch evtType {

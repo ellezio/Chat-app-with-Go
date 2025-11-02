@@ -1,8 +1,20 @@
+/*
+
+User acquire sesstion token by login in.
+For http server it is included in cookies.
+
+The session has to be stored outside of http server - in redis or memcache.
+Because when scaled horizontaly only one instance will know about user.
+I thinking to also add some fingerprint on token to enhance security - in
+short to not be able to use same token on diffrent devices.
+At this moment it stays in `sessions` variable for simplicity.
+
+*/
+
 package session
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -18,31 +30,37 @@ var sessionIDCookieKey = "sessionID"
 
 type SessionID uuid.UUID
 
+func (sid SessionID) String() string {
+	return uuid.UUID(sid).String()
+}
+
+type UserData struct {
+	ID   string
+	Name string
+}
+
 type Session struct {
-	ID       SessionID
-	Username string
-	ClientID string
+	ID   SessionID
+	User UserData
 }
 
-func (self *Session) GetID() string {
-	return uuid.UUID(self.ID).String()
-}
-
-type AuthData struct {
-	Username string
-}
-
-func New(auth AuthData) *Session {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	if auth.Username != "" {
-		session := Session{SessionID(uuid.New()), auth.Username, ""}
-		sessions[session.ID] = session
-		return &session
+func New() *Session {
+	session := Session{
+		ID:   SessionID(uuid.New()),
+		User: UserData{},
 	}
 
-	return nil
+	mutex.Lock()
+	sessions[session.ID] = session
+	mutex.Unlock()
+
+	return &session
+}
+
+func (s *Session) Save() {
+	mutex.Lock()
+	sessions[s.ID] = *s
+	mutex.Unlock()
 }
 
 func GetSessionID(ctx context.Context) SessionID {
@@ -83,15 +101,6 @@ func GetSession(ctx context.Context) *Session {
 	return &session
 }
 
-func GetUsername(ctx context.Context) string {
-	session := GetSession(ctx)
-	if session == nil {
-		return ""
-	}
-
-	return session.Username
-}
-
 func IsLoggedIn(ctx context.Context) bool {
 	session := GetSession(ctx)
 	if session == nil {
@@ -101,29 +110,14 @@ func IsLoggedIn(ctx context.Context) bool {
 	return true
 }
 
-func SetClientID(sessionID SessionID, clientID string) error {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	session, ok := sessions[sessionID]
-	if !ok {
-		return fmt.Errorf("Session with ID %s not found.", sessionID)
-	}
-
-	session.ClientID = clientID
-	sessions[sessionID] = session
-
-	return nil
-}
-
-func Context(ctx context.Context, sessionID SessionID) context.Context {
+func ContextWithSessionID(ctx context.Context, sessionID SessionID) context.Context {
 	return context.WithValue(ctx, sessionIDContextKey, sessionID)
 }
 
 func SetSessionCookie(w http.ResponseWriter, session *Session) {
 	cookie := http.Cookie{
 		Name:   sessionIDCookieKey,
-		Value:  session.GetID(),
+		Value:  session.ID.String(),
 		Path:   "/",
 		MaxAge: 3600,
 	}
@@ -135,9 +129,9 @@ func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		if cookie, err := r.Cookie(string(sessionIDCookieKey)); err == nil {
+		if cookie, err := r.Cookie(sessionIDCookieKey); err == nil {
 			if sID, err := uuid.Parse(cookie.Value); err == nil {
-				ctx = Context(ctx, SessionID(sID))
+				ctx = ContextWithSessionID(ctx, SessionID(sID))
 			} else {
 				log.Println(err)
 			}
@@ -160,7 +154,7 @@ func GetSessions() any {
 	var result = make([]Session, 0, len(sessions))
 
 	for id, session := range sessions {
-		result = append(result, Session{uuid.UUID(id).String(), session.Username, session.ClientID})
+		result = append(result, Session{uuid.UUID(id).String(), session.User.Name, session.User.ID})
 	}
 
 	return result
