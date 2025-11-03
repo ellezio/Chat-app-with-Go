@@ -68,9 +68,21 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user, err := sto.GetUser(username)
+	if err != nil {
+		log.Printf("error while login err %v", err)
+		// TODO: move it to some registration
+		user = &internal.User{Name: username}
+		if err = sto.CreateUser(user); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Println(err)
+			return
+		}
+	}
+
 	userData := session.UserData{
-		ID:   "",
-		Name: username,
+		ID:   user.ID.Hex(),
+		Name: user.Name,
 	}
 
 	sesh := session.New()
@@ -90,9 +102,7 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	sesh := session.GetSession(r.Context())
-	client := NewHttpClient(sesh.ID, conn, sesh.User.Name)
-	sesh.User.ID = client.GetID()
-	sesh.Save()
+	client := NewHttpClient(conn, sesh.ID)
 
 	log.Printf("%s Connected\r\n", sesh.User.Name)
 
@@ -160,7 +170,7 @@ func (self *ChatHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 
 	msg := internal.New(
 		chatID,
-		sesh.User.Name,
+		sesh.User.ID,
 		msgContent,
 		internal.TextMessage,
 	)
@@ -211,7 +221,7 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	msg := internal.New(
 		cht.ID,
-		sesh.User.Name,
+		sesh.User.ID,
 		fileHeader.Filename,
 		internal.ImageMessage,
 	)
@@ -299,7 +309,7 @@ func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
 	msgId := r.FormValue("msg-id")
 	sesh := session.GetSession(r.Context())
 
-	err = cht.SetHideMessage(msgId, sesh.User.Name, doHide)
+	err = cht.SetHideMessage(msgId, sesh.User.ID, doHide)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -334,17 +344,16 @@ func (self *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
 	self.hub.AddChat(chatName)
 }
 
-func NewHttpClient(sessionId session.SessionID, conn *websocket.Conn, name string) *HttpClient {
+func NewHttpClient(conn *websocket.Conn, sessionID session.SessionID) *HttpClient {
 	return &HttpClient{
-		id:        name,
-		SessionID: sessionId,
+		id:        sessionID.String(),
+		SessionID: sessionID,
 		conn:      conn,
 		connMux:   sync.Mutex{},
 	}
 }
 
 type HttpClient struct {
-	// TODO: move id to internal chat client
 	id        string
 	SessionID session.SessionID
 

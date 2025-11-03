@@ -26,18 +26,18 @@ const (
 	Error   MessageStatus = "error"
 )
 
-// At this moment I don't care about it having direct database representaion
 type Message struct {
-	ID         bson.ObjectID `bson:"_id,omitempty" json:"id"`
-	ChatID     bson.ObjectID `bson:"chat_id"       json:"chat_id"`
-	Author     string        `bson:"author"        json:"author"`
-	Content    string        `bson:"content"       json:"content"`
-	Type       MessageType   `bson:"type"          json:"type"`
-	CreatedAt  time.Time     `bson:"created_at"    json:"created_at"`
-	ModifiedAt time.Time     `bson:"modified_at"   json:"modified_at"`
-	Status     MessageStatus `bson:"status"        json:"status"`
-	HiddenFor  []string      `bson:"hidden_for"    json:"hidden_for"`
-	Deleted    bool          `bson:"deleted"       json:"deleted"`
+	ID         bson.ObjectID `json:"id"`
+	ChatID     bson.ObjectID `json:"chat_id"`
+	AuthorID   string        `json:"author_id"`
+	Content    string        `json:"content"`
+	Type       MessageType   `json:"type"`
+	CreatedAt  time.Time     `json:"created_at"`
+	ModifiedAt time.Time     `json:"modified_at"`
+	Status     MessageStatus `json:"status"`
+	HiddenFor  []string      `json:"hidden_for"`
+	Deleted    bool          `json:"deleted"`
+	Author     User          `json:"author"`
 }
 
 func (m *Message) MarshalBinary() ([]byte, error) {
@@ -48,7 +48,7 @@ func (m *Message) UnmarshalBinary(data []byte) error {
 	return json.Unmarshal(data, m)
 }
 
-func New(chatID string, author, content string, typ MessageType) *Message {
+func New(chatID, authorID, content string, typ MessageType) *Message {
 	t := time.Now()
 
 	cID, err := bson.ObjectIDFromHex(chatID)
@@ -59,7 +59,7 @@ func New(chatID string, author, content string, typ MessageType) *Message {
 	return &Message{
 		ID:         bson.NilObjectID,
 		ChatID:     cID,
-		Author:     author,
+		AuthorID:   authorID,
 		Content:    content,
 		Type:       typ,
 		CreatedAt:  t,
@@ -69,6 +69,13 @@ func New(chatID string, author, content string, typ MessageType) *Message {
 		Deleted:    false,
 	}
 }
+
+type User struct {
+	ID   bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name string        `bson:"name"          json:"name"`
+}
+
+func (u User) String() string { return "" }
 
 type EventType int
 
@@ -234,7 +241,7 @@ func (self *Chat) NewMessage(message *Message, authorID string) error {
 	details := MessageEventDetails{
 		ID:      message.ID.Hex(),
 		ChatID:  message.ChatID.Hex(),
-		UserID:  message.Author,
+		UserID:  message.AuthorID,
 		Content: message.Content,
 		Type:    message.Type,
 		Status:  message.Status,
@@ -280,18 +287,18 @@ func (self *Chat) UpdateMessageContent(id string, content string) error {
 	return self.publishEvent(event)
 }
 
-func (self *Chat) SetHideMessage(id string, user string, hide bool) error {
+func (self *Chat) SetHideMessage(id string, userID string, hide bool) error {
 	details := MessageEventDetails{
 		ID:     id,
 		ChatID: self.ID,
-		UserID: user,
+		UserID: userID,
 		Hidden: hide,
 	}
 
 	event := ChatEvent{
 		Type:    Event_HideMessage,
 		ChatID:  self.ID,
-		UserID:  user,
+		UserID:  userID,
 		Details: details,
 	}
 
@@ -481,7 +488,7 @@ func (self *Hub) Start() error {
 			default:
 				cht := self.GetChat(event.ChatID)
 				if cht == nil {
-					log.Printf("Chat ID: %q, no clients in this hub, ignoring message")
+					log.Printf("Chat ID: %q, no clients in this hub, ignoring message", event.ChatID)
 					return
 				}
 

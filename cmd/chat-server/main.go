@@ -91,7 +91,10 @@ func (h *handler) newMessage(details internal.MessageEventDetails) (any, error) 
 	msg := internal.New(details.ChatID, details.UserID, details.Content, details.Type)
 	msg.Status = internal.Sent
 
-	h.store.SaveMessage(msg)
+	err := h.store.SaveMessage(msg)
+	if err != nil {
+		log.Println(err)
+	}
 
 	return msg, nil
 }

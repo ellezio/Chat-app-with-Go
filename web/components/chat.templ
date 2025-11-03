@@ -6,18 +6,18 @@ import "time"
 import "slices"
 import "context"
 
-func GetUsername(ctx context.Context) string {
+func GetUser(ctx context.Context) (id, name string) {
 	if sesh := session.GetSession(ctx); sesh != nil {
-		return sesh.User.Name
+		return sesh.User.ID, sesh.User.Name
 	}
 
-	return ""
+	return "", ""
 }
 
 templ MessageBox(msg *internal.Message, oob bool, edit bool) {
-	{{ Username := GetUsername(ctx) }}
-	{{ isAuthor := msg.Author == Username }}
-	{{ isHidden := slices.Contains(msg.HiddenFor, Username) }}
+	{{ userID, _ := GetUser(ctx) }}
+	{{ isAuthor := msg.AuthorID == userID }}
+	{{ isHidden := slices.Contains(msg.HiddenFor, userID) }}
 	<li
 		if oob {
 			hx-swap-oob="true"
@@ -64,7 +64,7 @@ templ MessageBox(msg *internal.Message, oob bool, edit bool) {
 				}
 			</div>
 		</div>
-		<div>{ msg.Author } | { msg.CreatedAt.Format(time.DateTime) }</div>
+		<div>{ msg.Author.Name } | { msg.CreatedAt.Format(time.DateTime) }</div>
 		if isAuthor {
 			<div>status: { msg.Status }</div>
 		}
@@ -190,9 +190,9 @@ templ ContextMenusWrapper(oob bool) {
 }
 
 templ ContextMenu(msg *internal.Message, oob bool) {
-	{{ username := GetUsername(ctx) }}
-	{{ isAuthor := msg.Author == username }}
-	{{ isHidden := slices.Contains(msg.HiddenFor, username) }}
+	{{ userID, _ := GetUser(ctx) }}
+	{{ isAuthor := msg.AuthorID == userID }}
+	{{ isHidden := slices.Contains(msg.HiddenFor, userID) }}
 	<ul
 		id={ "ctx-menu-" + msg.ID.Hex() }
 		data-msg-id={ msg.ID.Hex() }
