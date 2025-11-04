@@ -32,13 +32,13 @@ type handler struct {
 	mu    sync.Mutex
 }
 
-func assertAndCall[T any](eventName string, fn func(arg T) (any, error), arg any) (any, error) {
+func assertAndCall[T any](eventName string, fn func(evt internal.ChatEvent, arg T) (any, error), evt internal.ChatEvent, arg any) (any, error) {
 	a, ok := arg.(T)
 	if !ok {
 		return nil, fmt.Errorf("invalid type %T for event %s", arg, eventName)
 	}
 
-	return fn(a)
+	return fn(evt, a)
 }
 
 func (h *handler) handle(d *amqp.Delivery, ch *amqp.Channel) error {
@@ -56,19 +56,19 @@ func (h *handler) handle(d *amqp.Delivery, ch *amqp.Channel) error {
 
 	switch event.Type {
 	case internal.Event_NewMessage:
-		broadcastDetails, err = assertAndCall("NewMessage", h.newMessage, event.Details)
+		broadcastDetails, err = assertAndCall("NewMessage", h.newMessage, event, event.Details)
 	case internal.Event_UpdateMessage:
-		broadcastDetails, err = assertAndCall("UpdateMessage", h.updateMessage, event.Details)
+		broadcastDetails, err = assertAndCall("UpdateMessage", h.updateMessage, event, event.Details)
 	case internal.Event_EditMessage:
-		broadcastDetails, err = assertAndCall("EditMessage", h.editMessage, event.Details)
+		broadcastDetails, err = assertAndCall("EditMessage", h.editMessage, event, event.Details)
 	case internal.Event_HideMessage:
-		broadcastDetails, err = assertAndCall("HideMessage", h.hideMessage, event.Details)
+		broadcastDetails, err = assertAndCall("HideMessage", h.hideMessage, event, event.Details)
 	case internal.Event_DeleteMessage:
-		broadcastDetails, err = assertAndCall("DeleteMessage", h.deleteMessage, event.Details)
+		broadcastDetails, err = assertAndCall("DeleteMessage", h.deleteMessage, event, event.Details)
 	// case internal.Event_PinMessage:
-	// broadcastDetails, err = assertAndCall("PinMessage", h.pinMessage, event.Details)
+	// broadcastDetails, err = assertAndCall("PinMessage", h.pinMessage, event, event.Details)
 	case internal.Event_NewChat:
-		broadcastDetails, err = assertAndCall("NewChat", h.newChat, event.Details)
+		broadcastDetails, err = assertAndCall("NewChat", h.newChat, event, event.Details)
 	default:
 		err = fmt.Errorf("Unknown event type %v", event.Type)
 	}
@@ -87,8 +87,8 @@ func (h *handler) handle(d *amqp.Delivery, ch *amqp.Channel) error {
 	return nil
 }
 
-func (h *handler) newMessage(details internal.MessageEventDetails) (any, error) {
-	msg := internal.New(details.ChatID, details.UserID, details.Content, details.Type)
+func (h *handler) newMessage(evt internal.ChatEvent, details internal.MessageEventDetails) (any, error) {
+	msg := internal.New(evt.ChatId, evt.UserId, details.Content, details.Type)
 	msg.Status = internal.Sent
 
 	err := h.store.SaveMessage(msg)
@@ -99,26 +99,26 @@ func (h *handler) newMessage(details internal.MessageEventDetails) (any, error) 
 	return msg, nil
 }
 
-func (h *handler) updateMessage(details internal.Message) (any, error) {
+func (h *handler) updateMessage(evt internal.ChatEvent, details internal.Message) (any, error) {
 	h.store.SaveMessage(&details)
 	return details, nil
 }
 
-func (h *handler) editMessage(details internal.MessageEventDetails) (any, error) {
-	return h.store.UpdateMessageContent(details.ID, details.Content)
+func (h *handler) editMessage(evt internal.ChatEvent, details internal.MessageEventDetails) (any, error) {
+	return h.store.UpdateMessageContent(details.Id, details.Content)
 }
 
-func (h *handler) hideMessage(details internal.MessageEventDetails) (any, error) {
-	return h.store.SetHideMessage(details.ID, details.UserID, details.Hidden)
+func (h *handler) hideMessage(evt internal.ChatEvent, details internal.MessageEventDetails) (any, error) {
+	return h.store.SetHideMessage(details.Id, evt.UserId, details.Hidden)
 }
 
-func (h *handler) deleteMessage(details internal.MessageEventDetails) (any, error) {
-	return h.store.DeleteMessage(details.ID)
+func (h *handler) deleteMessage(evt internal.ChatEvent, details internal.MessageEventDetails) (any, error) {
+	return h.store.DeleteMessage(details.Id)
 }
 
 // func (h *handler) pinMessage(d *amqp.Delivery, ch *amqp.Channel, event internal.ChatEvent) {}
 
-func (h *handler) newChat(details *internal.Chat) (any, error) {
+func (h *handler) newChat(evt internal.ChatEvent, details *internal.Chat) (any, error) {
 	if err := h.store.SaveChat(details); err != nil {
 		return nil, fmt.Errorf("error when creating chats: %v", err)
 	}

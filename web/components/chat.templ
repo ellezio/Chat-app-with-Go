@@ -8,21 +8,21 @@ import "context"
 
 func GetUser(ctx context.Context) (id, name string) {
 	if sesh := session.GetSession(ctx); sesh != nil {
-		return sesh.User.ID, sesh.User.Name
+		return sesh.User.Id, sesh.User.Name
 	}
 
 	return "", ""
 }
 
 templ MessageBox(msg *internal.Message, oob bool, edit bool) {
-	{{ userID, _ := GetUser(ctx) }}
-	{{ isAuthor := msg.AuthorID == userID }}
-	{{ isHidden := slices.Contains(msg.HiddenFor, userID) }}
+	{{ userId, _ := GetUser(ctx) }}
+	{{ isAuthor := msg.AuthorId == userId }}
+	{{ isHidden := slices.Contains(msg.HiddenFor, userId) }}
 	<li
 		if oob {
 			hx-swap-oob="true"
 		}
-		id={ "msg-id-" + msg.ID.Hex() }
+		id={ "msg-id-" + msg.Id.Hex() }
 		class={
 			"mt-4 max-w-full flex flex-col",
 			templ.KV("self-end items-end", isAuthor),
@@ -31,8 +31,8 @@ templ MessageBox(msg *internal.Message, oob bool, edit bool) {
 	>
 		<div class="flex">
 			<div
-				id={ "ctx-menu-invoker-" + msg.ID.Hex() }
-				data-msg-id={ msg.ID.Hex() }
+				id={ "ctx-menu-invoker-" + msg.Id.Hex() }
+				data-msg-id={ msg.Id.Hex() }
 				onclick="toggleContextMenu(event)"
 				class="px-2 cursor-pointer h-fit"
 			>:</div>
@@ -52,10 +52,10 @@ templ MessageBox(msg *internal.Message, oob bool, edit bool) {
 				} else if edit {
 					<form
 						hx-post="/message/edit"
-						hx-target={ "#msg-id-" + msg.ID.Hex() }
-						hx-vals={ "{\"msg-id\": \"" + msg.ID.Hex() + "\"}" }
+						hx-target={ "#msg-id-" + msg.Id.Hex() }
+						hx-vals={ `{"msgId": "` + msg.Id.Hex() + `"}` }
 					>
-						<textarea name="msg-content">{ msg.Content }</textarea>
+						<textarea name="msgContent">{ msg.Content }</textarea>
 						<button type="button" hx-get="/message">Cancel</button>
 						<button type="submit">Update</button>
 					</form>
@@ -86,7 +86,7 @@ templ MessagesList(msgs []*internal.Message, oob bool) {
 	</ul>
 }
 
-templ SendBar(chatID string) {
+templ SendBar(chatId string) {
 	<div class="flex gap-4">
 		<input
 			type="file"
@@ -98,7 +98,7 @@ templ SendBar(chatID string) {
 		/>
 		<form
 			class="flex gap-4 grow"
-			hx-post={ "/chat/" + chatID + "/messages" }
+			hx-post={ "/chat/" + chatId + "/messages" }
 			hx-on::after-request="this.reset()"
 			hx-swap="none"
 		>
@@ -108,14 +108,14 @@ templ SendBar(chatID string) {
 	</div>
 }
 
-templ ChatWindow(chatID string, msgs []*internal.Message) {
+templ ChatWindow(chatId string, msgs []*internal.Message) {
 	<div
 		id="chat-window"
 		hx-swap-oob="innerHTML"
 	>
 		<div
 			class="flex flex-col w-full"
-			hx-vals={ `{"chat-id": "` + chatID + `"}` }
+			hx-vals={ `{"chatId": "` + chatId + `"}` }
 		>
 			@ContextMenusWrapper(false) {
 				for _, msg := range msgs {
@@ -128,9 +128,9 @@ templ ChatWindow(chatID string, msgs []*internal.Message) {
 			</div>
 			<div
 				class="h-fit py-4 px-2 bg-beta"
-				hx-vals={ `{"msg-type": "send-message", "chat-id": "` + chatID + `"}` }
+				hx-vals={ `{"msgType": "sendMessage", "chatId": "` + chatId + `"}` }
 			>
-				@SendBar(chatID)
+				@SendBar(chatId)
 			</div>
 		</div>
 		@msgScroller()
@@ -160,7 +160,7 @@ templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 				<div>
 					@ChatList(chts)
 					<form hx-post="/chat" hx-on::after-request="this.reset()" hx-swap="none">
-						<input name="chat-name"/>
+						<input name="chatName"/>
 						<button type="submit">Add</button>
 					</form>
 				</div>
@@ -190,14 +190,14 @@ templ ContextMenusWrapper(oob bool) {
 }
 
 templ ContextMenu(msg *internal.Message, oob bool) {
-	{{ userID, _ := GetUser(ctx) }}
-	{{ isAuthor := msg.AuthorID == userID }}
-	{{ isHidden := slices.Contains(msg.HiddenFor, userID) }}
+	{{ userId, _ := GetUser(ctx) }}
+	{{ isAuthor := msg.AuthorId == userId }}
+	{{ isHidden := slices.Contains(msg.HiddenFor, userId) }}
 	<ul
-		id={ "ctx-menu-" + msg.ID.Hex() }
-		data-msg-id={ msg.ID.Hex() }
+		id={ "ctx-menu-" + msg.Id.Hex() }
+		data-msg-id={ msg.Id.Hex() }
 		class="ctx-menu hidden relative bg-alpha w-fit"
-		hx-vals={ `{"msg-id": "` + msg.ID.Hex() + `"}` }
+		hx-vals={ `{"msgId": "` + msg.Id.Hex() + `"}` }
 		onclick="toggleContextMenu()"
 		if oob {
 			hx-swap-oob="true"
@@ -233,19 +233,19 @@ templ ChatList(chts []*internal.Chat) {
 
 templ ChatListItem(cht *internal.Chat, status string) {
 	<li
-		id={ "chat-id-" + cht.ID }
+		id={ "chat-id-" + cht.Id }
 		hx-swap-oob
 		class={
 			"chat-item",
 			templ.KV("bg-active", status == "active"),
-			templ.KV("bg-new-message", status == "new-message"),
+			templ.KV("bg-new-message", status == "newMessage"),
 		}
 	>
 		<button
 			type="button"
 			class="w-full text-start"
 			if status != "active" {
-				hx-vals={ `{"msg-type": "change-chat", "chat-id": "` + cht.ID + `"}` }
+				hx-vals={ `{"msgType": "changeChat", "chatId": "` + cht.Id + `"}` }
 				ws-send
 			}
 		>{ cht.Name }</button>

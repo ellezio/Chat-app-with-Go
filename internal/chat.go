@@ -27,15 +27,15 @@ const (
 )
 
 type Message struct {
-	ID         bson.ObjectID `json:"id"`
-	ChatID     bson.ObjectID `json:"chat_id"`
-	AuthorID   string        `json:"author_id"`
+	Id         bson.ObjectID `json:"id"`
+	ChatId     bson.ObjectID `json:"chatId"`
+	AuthorId   string        `json:"authorId"`
 	Content    string        `json:"content"`
 	Type       MessageType   `json:"type"`
-	CreatedAt  time.Time     `json:"created_at"`
-	ModifiedAt time.Time     `json:"modified_at"`
+	CreatedAt  time.Time     `json:"createdAt"`
+	ModifiedAt time.Time     `json:"modifiedAt"`
 	Status     MessageStatus `json:"status"`
-	HiddenFor  []string      `json:"hidden_for"`
+	HiddenFor  []string      `json:"hiddenFor"`
 	Deleted    bool          `json:"deleted"`
 	Author     User          `json:"author"`
 }
@@ -48,18 +48,18 @@ func (m *Message) UnmarshalBinary(data []byte) error {
 	return json.Unmarshal(data, m)
 }
 
-func New(chatID, authorID, content string, typ MessageType) *Message {
+func New(chatId, authorId, content string, typ MessageType) *Message {
 	t := time.Now()
 
-	cID, err := bson.ObjectIDFromHex(chatID)
+	cId, err := bson.ObjectIDFromHex(chatId)
 	if err != nil {
 		panic(err)
 	}
 
 	return &Message{
-		ID:         bson.NilObjectID,
-		ChatID:     cID,
-		AuthorID:   authorID,
+		Id:         bson.NilObjectID,
+		ChatId:     cId,
+		AuthorId:   authorId,
 		Content:    content,
 		Type:       typ,
 		CreatedAt:  t,
@@ -71,7 +71,7 @@ func New(chatID, authorID, content string, typ MessageType) *Message {
 }
 
 type User struct {
-	ID   bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	Id   bson.ObjectID `bson:"_id,omitempty" json:"id"`
 	Name string        `bson:"name"          json:"name"`
 }
 
@@ -90,9 +90,7 @@ const (
 )
 
 type MessageEventDetails struct {
-	ID      string        `json:"id"`
-	ChatID  string        `json:"chat-id"`
-	UserID  string        `json:"user-id"`
+	Id      string        `json:"id"`
 	Content string        `json:"content"`
 	Type    MessageType   `json:"type"`
 	Status  MessageStatus `json:"status"`
@@ -104,16 +102,16 @@ type ChatEventDetails struct{}
 
 type ChatEvent struct {
 	Type    EventType `json:"type"`
-	ChatID  string    `json:"chat-id"`
-	UserID  string    `json:"user-id"`
+	ChatId  string    `json:"chatId"`
+	UserId  string    `json:"userId"`
 	Details any       `json:"details"`
 }
 
 func (ce *ChatEvent) UnmarshalJSON(data []byte) error {
 	var temp struct {
 		Type    EventType       `json:"type"`
-		ChatID  string          `json:"chat-id"`
-		UserID  string          `json:"user-id"`
+		ChatId  string          `json:"chatId"`
+		UserId  string          `json:"userId"`
 		Details json.RawMessage `json:"details"`
 	}
 
@@ -122,8 +120,8 @@ func (ce *ChatEvent) UnmarshalJSON(data []byte) error {
 	}
 
 	ce.Type = temp.Type
-	ce.ChatID = temp.ChatID
-	ce.UserID = temp.UserID
+	ce.ChatId = temp.ChatId
+	ce.UserId = temp.UserId
 
 	switch temp.Type {
 	case Event_NewMessage, Event_EditMessage, Event_HideMessage, Event_DeleteMessage, Event_PinMessage:
@@ -160,7 +158,7 @@ type EventData struct {
 }
 
 type Client interface {
-	GetID() string
+	GetId() string
 	HandleEvent(evt EventType, data *EventData)
 }
 
@@ -168,8 +166,8 @@ type Store interface {
 	GetChats() ([]*Chat, error)
 	SaveChat(cht *Chat) error
 
-	GetMessage(msgID string) (*Message, error)
-	GetMessages(chatID string) ([]*Message, error)
+	GetMessage(msgId string) (*Message, error)
+	GetMessages(chatId string) ([]*Message, error)
 	SaveMessage(msg *Message) error
 
 	UpdateMessageContent(id string, content string) (*Message, error)
@@ -178,7 +176,7 @@ type Store interface {
 }
 
 type Chat struct {
-	ID   string
+	Id   string
 	Name string
 
 	store Store
@@ -192,7 +190,7 @@ type Chat struct {
 
 func NewChat(name string, store Store) *Chat {
 	return &Chat{
-		ID:                  "",
+		Id:                  "",
 		Name:                name,
 		store:               store,
 		connectedClients:    make(map[string]Client),
@@ -204,24 +202,24 @@ func (self *Chat) ConnectClient(client Client) {
 	self.clientsMutex.Lock()
 	defer self.clientsMutex.Unlock()
 
-	delete(self.disconnectedClients, client.GetID())
-	self.connectedClients[client.GetID()] = client
+	delete(self.disconnectedClients, client.GetId())
+	self.connectedClients[client.GetId()] = client
 }
 
 func (self *Chat) DisconnectClient(client Client) {
 	self.clientsMutex.Lock()
 	defer self.clientsMutex.Unlock()
 
-	delete(self.connectedClients, client.GetID())
-	self.disconnectedClients[client.GetID()] = client
+	delete(self.connectedClients, client.GetId())
+	self.disconnectedClients[client.GetId()] = client
 }
 
 func (self *Chat) RemoveClient(client Client) {
 	self.clientsMutex.Lock()
 	defer self.clientsMutex.Unlock()
 
-	delete(self.connectedClients, client.GetID())
-	delete(self.disconnectedClients, client.GetID())
+	delete(self.connectedClients, client.GetId())
+	delete(self.disconnectedClients, client.GetId())
 }
 
 func (self *Chat) GetMessages() ([]*Message, error) {
@@ -229,7 +227,7 @@ func (self *Chat) GetMessages() ([]*Message, error) {
 		return nil, errors.New("Store not set.")
 	}
 
-	msgs, err := self.store.GetMessages(self.ID)
+	msgs, err := self.store.GetMessages(self.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -237,11 +235,9 @@ func (self *Chat) GetMessages() ([]*Message, error) {
 	return msgs, nil
 }
 
-func (self *Chat) NewMessage(message *Message, authorID string) error {
+func (self *Chat) NewMessage(message *Message, authorId string) error {
 	details := MessageEventDetails{
-		ID:      message.ID.Hex(),
-		ChatID:  message.ChatID.Hex(),
-		UserID:  message.AuthorID,
+		Id:      message.Id.Hex(),
 		Content: message.Content,
 		Type:    message.Type,
 		Status:  message.Status,
@@ -251,19 +247,19 @@ func (self *Chat) NewMessage(message *Message, authorID string) error {
 
 	event := ChatEvent{
 		Type:    Event_NewMessage,
-		ChatID:  self.ID,
-		UserID:  authorID,
+		ChatId:  self.Id,
+		UserId:  authorId,
 		Details: details,
 	}
 
 	return self.publishEvent(event)
 }
 
-func (self *Chat) UpdateMessage(message *Message, userID string) error {
+func (self *Chat) UpdateMessage(message *Message, userId string) error {
 	event := ChatEvent{
 		Type:    Event_UpdateMessage,
-		ChatID:  self.ID,
-		UserID:  userID,
+		ChatId:  self.Id,
+		UserId:  userId,
 		Details: message,
 	}
 
@@ -272,33 +268,29 @@ func (self *Chat) UpdateMessage(message *Message, userID string) error {
 
 func (self *Chat) UpdateMessageContent(id string, content string) error {
 	details := MessageEventDetails{
-		ID:      id,
-		ChatID:  self.ID,
+		Id:      id,
 		Content: content,
 	}
 
 	event := ChatEvent{
 		Type:    Event_EditMessage,
-		ChatID:  self.ID,
-		UserID:  "",
+		ChatId:  self.Id,
 		Details: details,
 	}
 
 	return self.publishEvent(event)
 }
 
-func (self *Chat) SetHideMessage(id string, userID string, hide bool) error {
+func (self *Chat) SetHideMessage(id string, userId string, hide bool) error {
 	details := MessageEventDetails{
-		ID:     id,
-		ChatID: self.ID,
-		UserID: userID,
+		Id:     id,
 		Hidden: hide,
 	}
 
 	event := ChatEvent{
 		Type:    Event_HideMessage,
-		ChatID:  self.ID,
-		UserID:  userID,
+		ChatId:  self.Id,
+		UserId:  userId,
 		Details: details,
 	}
 
@@ -307,14 +299,13 @@ func (self *Chat) SetHideMessage(id string, userID string, hide bool) error {
 
 func (self *Chat) DeleteMessage(id string) error {
 	details := MessageEventDetails{
-		ID:      id,
-		ChatID:  self.ID,
+		Id:      id,
 		Deleted: true,
 	}
 
 	event := ChatEvent{
 		Type:    Event_DeleteMessage,
-		ChatID:  self.ID,
+		ChatId:  self.Id,
 		Details: details,
 	}
 
@@ -445,8 +436,8 @@ func (self *Hub) Start() error {
 
 			var temp struct {
 				Type    EventType       `json:"type"`
-				ChatID  string          `json:"chat-id"`
-				UserID  string          `json:"user-id"`
+				ChatId  string          `json:"chatId"`
+				UserId  string          `json:"userId"`
 				Details json.RawMessage `json:"details"`
 			}
 
@@ -456,8 +447,8 @@ func (self *Hub) Start() error {
 			}
 
 			event.Type = temp.Type
-			event.ChatID = temp.ChatID
-			event.UserID = temp.UserID
+			event.ChatId = temp.ChatId
+			event.UserId = temp.UserId
 
 			switch event.Type {
 			case Event_NewChat:
@@ -473,7 +464,7 @@ func (self *Hub) Start() error {
 				cht.disconnectedClients = make(map[string]Client)
 
 				self.chatsMutex.Lock()
-				self.chats[cht.ID] = cht
+				self.chats[cht.Id] = cht
 				self.chatsMutex.Unlock()
 
 				evtData := &EventData{
@@ -486,9 +477,9 @@ func (self *Hub) Start() error {
 				}
 				self.clientMetasMutex.Unlock()
 			default:
-				cht := self.GetChat(event.ChatID)
+				cht := self.GetChat(event.ChatId)
 				if cht == nil {
-					log.Printf("Chat ID: %q, no clients in this hub, ignoring message", event.ChatID)
+					log.Printf("Chat id: %q, no clients in this hub, ignoring message", event.ChatId)
 					return
 				}
 
@@ -500,7 +491,7 @@ func (self *Hub) Start() error {
 
 				evt := &EventData{
 					Msg:      &msg,
-					SenderId: event.UserID,
+					SenderId: event.UserId,
 					Cht:      cht,
 				}
 
@@ -528,7 +519,7 @@ func (self *Hub) LoadChatsFromStore() error {
 	self.chatsMutex.Lock()
 	for _, cht := range chts {
 		cht.publishEvent = self.PublishEvent
-		self.chats[cht.ID] = cht
+		self.chats[cht.Id] = cht
 	}
 	self.chatsMutex.Unlock()
 
@@ -565,18 +556,18 @@ func (self *Hub) GetChats() []*Chat {
 	return slices.Collect(maps.Values(self.chats))
 }
 
-func (self *Hub) GetChat(chatID string) *Chat {
+func (self *Hub) GetChat(chatId string) *Chat {
 	self.chatsMutex.Lock()
 	defer self.chatsMutex.Unlock()
 
-	if cht, ok := self.chats[chatID]; ok {
+	if cht, ok := self.chats[chatId]; ok {
 		return cht
 	}
 
 	return nil
 }
 
-func (self *Hub) ConnectClient(chatID string, client Client) (cht *Chat, prevCht *Chat, err error) {
+func (self *Hub) ConnectClient(chatId string, client Client) (cht *Chat, prevCht *Chat, err error) {
 	if client == nil {
 		return nil, nil, errors.New("Client cannot be nil.")
 	}
@@ -584,15 +575,15 @@ func (self *Hub) ConnectClient(chatID string, client Client) (cht *Chat, prevCht
 	self.clientMetasMutex.Lock()
 	defer self.clientMetasMutex.Unlock()
 
-	cliID := client.GetID()
-	cliMeta, ok := self.clientMetas[cliID]
+	cliId := client.GetId()
+	cliMeta, ok := self.clientMetas[cliId]
 	if !ok {
 		cliMeta = &ClientMeta{
 			Client:      client,
 			CurrentChat: "",
 		}
 
-		self.clientMetas[cliID] = cliMeta
+		self.clientMetas[cliId] = cliMeta
 	}
 
 	self.DisconnectClientFormChat(cliMeta.CurrentChat, client)
@@ -602,15 +593,15 @@ func (self *Hub) ConnectClient(chatID string, client Client) (cht *Chat, prevCht
 	defer self.chatsMutex.Unlock()
 
 	// NOTE: temporal assessment that empty string is initial connection
-	if chatID == "" {
+	if chatId == "" {
 		for _, cht = range self.chats {
 			cht.DisconnectClient(client)
 		}
 	}
 
-	if cht, ok := self.chats[chatID]; ok {
+	if cht, ok := self.chats[chatId]; ok {
 		cht.ConnectClient(client)
-		cliMeta.CurrentChat = cht.ID
+		cliMeta.CurrentChat = cht.Id
 		return cht, prevCht, nil
 	}
 
@@ -621,15 +612,15 @@ func (self *Hub) DisconnectClient(client Client) {
 	self.clientMetasMutex.Lock()
 	defer self.clientMetasMutex.Unlock()
 
-	cliID := client.GetID()
+	cliId := client.GetId()
 
-	if cliMeta, ok := self.clientMetas[cliID]; ok {
+	if cliMeta, ok := self.clientMetas[cliId]; ok {
 		cliChatID := cliMeta.CurrentChat
 		self.DisconnectClientFormChat(cliChatID, client)
 	}
 }
 
-func (self *Hub) DisconnectClientFormChat(chatID string, client Client) {
+func (self *Hub) DisconnectClientFormChat(chatId string, client Client) {
 	if client == nil {
 		return
 	}
@@ -637,7 +628,7 @@ func (self *Hub) DisconnectClientFormChat(chatID string, client Client) {
 	self.chatsMutex.Lock()
 	defer self.chatsMutex.Unlock()
 
-	if cht, ok := self.chats[chatID]; ok {
+	if cht, ok := self.chats[chatId]; ok {
 		cht.DisconnectClient(client)
 	}
 }
@@ -649,13 +640,13 @@ func (self *Hub) RemoveClient(client Client) {
 	self.chatsMutex.Lock()
 	defer self.chatsMutex.Unlock()
 
-	if cliMeta, ok := self.clientMetas[client.GetID()]; ok {
+	if cliMeta, ok := self.clientMetas[client.GetId()]; ok {
 		if cht, ok := self.chats[cliMeta.CurrentChat]; ok {
 			cht.RemoveClient(client)
 		}
 	}
 
-	delete(self.clientMetas, client.GetID())
+	delete(self.clientMetas, client.GetId())
 }
 
 func (self *Hub) AddChat(name string) {
