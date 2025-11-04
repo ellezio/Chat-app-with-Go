@@ -194,7 +194,7 @@ func main() {
 	)
 	failOnError(err, "Failed to register a consumer")
 
-	var forever chan struct{}
+	forever := make(chan struct{})
 
 	dbstore := store.MongodbStore{}
 	h := handler{store: &dbstore, chats: make(map[string]*chat), mu: sync.Mutex{}}

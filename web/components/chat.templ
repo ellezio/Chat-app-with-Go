@@ -5,6 +5,7 @@ import "github.com/ellezio/Chat-app-with-Go/internal"
 import "time"
 import "slices"
 import "context"
+import "fmt"
 
 func GetUser(ctx context.Context) (id, name string) {
 	if sesh := session.GetSession(ctx); sesh != nil {
@@ -51,12 +52,14 @@ templ MessageBox(msg *internal.Message, oob bool, edit bool) {
 					<img src={ "/files/" + msg.Content } class="w-auto h-auto max-w-full max-h-96"/>
 				} else if edit {
 					<form
-						hx-post="/message/edit"
+						hx-put={ fmt.Sprintf("/chats/%s/messages/%s/edit", msg.ChatId.Hex(), msg.Id.Hex()) }
 						hx-target={ "#msg-id-" + msg.Id.Hex() }
-						hx-vals={ `{"msgId": "` + msg.Id.Hex() + `"}` }
 					>
 						<textarea name="msgContent">{ msg.Content }</textarea>
-						<button type="button" hx-get="/message">Cancel</button>
+						<button
+							type="button"
+							hx-get={ fmt.Sprintf("/chats/%s/messages/%s", msg.ChatId.Hex(), msg.Id.Hex()) }
+						>Cancel</button>
 						<button type="submit">Update</button>
 					</form>
 				} else {
@@ -92,13 +95,13 @@ templ SendBar(chatId string) {
 			type="file"
 			name="file"
 			class="bg-alpha border-2 border-gamma rounded-sm"
-			hx-post="/uploadfile"
+			hx-post={ fmt.Sprintf("/chats/%s/uploadfile", chatId) }
 			hx-encoding="multipart/form-data"
 			hx-on::after-request="this.value = ''"
 		/>
 		<form
 			class="flex gap-4 grow"
-			hx-post={ "/chat/" + chatId + "/messages" }
+			hx-post={ fmt.Sprintf("/chats/%s/messages", chatId) }
 			hx-on::after-request="this.reset()"
 			hx-swap="none"
 		>
@@ -113,10 +116,7 @@ templ ChatWindow(chatId string, msgs []*internal.Message) {
 		id="chat-window"
 		hx-swap-oob="innerHTML"
 	>
-		<div
-			class="flex flex-col w-full"
-			hx-vals={ `{"chatId": "` + chatId + `"}` }
-		>
+		<div class="flex flex-col w-full">
 			@ContextMenusWrapper(false) {
 				for _, msg := range msgs {
 					@ContextMenu(msg, false)
@@ -126,10 +126,7 @@ templ ChatWindow(chatId string, msgs []*internal.Message) {
 				@MessagesList(msgs, false)
 				<div id="anchor"></div>
 			</div>
-			<div
-				class="h-fit py-4 px-2 bg-beta"
-				hx-vals={ `{"msgType": "sendMessage", "chatId": "` + chatId + `"}` }
-			>
+			<div class="h-fit py-4 px-2 bg-beta">
 				@SendBar(chatId)
 			</div>
 		</div>
@@ -159,7 +156,7 @@ templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 			>
 				<div>
 					@ChatList(chts)
-					<form hx-post="/chat" hx-on::after-request="this.reset()" hx-swap="none">
+					<form hx-post="/chats" hx-on::after-request="this.reset()" hx-swap="none">
 						<input name="chatName"/>
 						<button type="submit">Add</button>
 					</form>
@@ -197,25 +194,44 @@ templ ContextMenu(msg *internal.Message, oob bool) {
 		id={ "ctx-menu-" + msg.Id.Hex() }
 		data-msg-id={ msg.Id.Hex() }
 		class="ctx-menu hidden relative bg-alpha w-fit"
-		hx-vals={ `{"msgId": "` + msg.Id.Hex() + `"}` }
 		onclick="toggleContextMenu()"
 		if oob {
 			hx-swap-oob="true"
 		}
 	>
 		if isAuthor && !isHidden && !msg.Deleted && msg.Type == internal.TextMessage {
-			<li hx-swap="none" hx-get="/message/edit" hx-trigger="click">edit</li>
+			<li
+				hx-swap="none"
+				hx-get={ fmt.Sprintf("/chats/%s/messages/%s/edit", msg.ChatId.Hex(), msg.Id.Hex()) }
+				hx-trigger="click"
+			>edit</li>
 		}
 		if true {
-			<li hx-swap="none" hx-post="/message/pin" hx-trigger="click">pin</li>
+			<li
+				hx-swap="none"
+				hx-put={ fmt.Sprintf("/chats/%s/messages/%s/pin", msg.ChatId.Hex(), msg.Id.Hex()) }
+				hx-trigger="click"
+			>pin</li>
 		}
 		if isHidden {
-			<li hx-swap="none" hx-post="/message/hide/false" hx-trigger="click">show</li>
+			<li
+				hx-swap="none"
+				hx-put={ fmt.Sprintf("/chats/%s/messages/%s/show", msg.ChatId.Hex(), msg.Id.Hex()) }
+				hx-trigger="click"
+			>show</li>
 		} else {
-			<li hx-swap="none" hx-post="/message/hide/true" hx-trigger="click">hide</li>
+			<li
+				hx-swap="none"
+				hx-put={ fmt.Sprintf("/chats/%s/messages/%s/hide", msg.ChatId.Hex(), msg.Id.Hex()) }
+				hx-trigger="click"
+			>hide</li>
 		}
 		if isAuthor && !msg.Deleted {
-			<li hx-swap="none" hx-post="/message/delete" hx-trigger="click">delete</li>
+			<li
+				hx-swap="none"
+				hx-delete={ fmt.Sprintf("/chats/%s/messages/%s", msg.ChatId.Hex(), msg.Id.Hex()) }
+				hx-trigger="click"
+			>delete</li>
 		}
 	</ul>
 }

@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"sync"
 
 	"github.com/a-h/templ"
@@ -187,7 +186,7 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chatId := r.FormValue("chatId")
+	chatId := r.PathValue("chatId")
 	cht := self.hub.GetChat(chatId)
 	if cht == nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -230,15 +229,7 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-
-	if !query.Has("msgId") {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	msgId := query.Get("msgId")
-
+	msgId := r.PathValue("messageId")
 	msg, err := sto.GetMessage(msgId)
 	if err != nil {
 		log.Println(err)
@@ -250,9 +241,7 @@ func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-	msgId := r.FormValue("msgId")
-
+	msgId := r.PathValue("messageId")
 	msg, err := sto.GetMessage(msgId)
 	if err != nil {
 		log.Println(err)
@@ -267,16 +256,16 @@ func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
 
 func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
-	msgId := r.FormValue("msgId")
-	msgContent := r.FormValue("msgContent")
 
-	chatId := r.FormValue("chatId")
+	chatId := r.PathValue("chatId")
 	cht := self.hub.GetChat(chatId)
 	if cht == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
+	msgId := r.PathValue("messageId")
+	msgContent := r.FormValue("msgContent")
 	err := cht.UpdateMessageContent(msgId, msgContent)
 	if err != nil {
 		log.Println(err)
@@ -289,53 +278,41 @@ func (self *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-func (self *ChatHandler) MessageHide(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
+func (self *ChatHandler) MessageHide(hide bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		chatId := r.PathValue("chatId")
+		cht := self.hub.GetChat(chatId)
+		if cht == nil {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 
-	chatId := r.FormValue("chatId")
-	cht := self.hub.GetChat(chatId)
-	if cht == nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	doHide, err := strconv.ParseBool(r.PathValue("hide"))
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	msgId := r.FormValue("msgId")
-	sesh := session.GetSession(r.Context())
-
-	err = cht.SetHideMessage(msgId, sesh.User.Id, doHide)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		sesh := session.GetSession(r.Context())
+		msgId := r.PathValue("messageId")
+		err := cht.SetHideMessage(msgId, sesh.User.Id, hide)
+		if err != nil {
+			log.Println(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 	}
 }
 
 func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
-	r.ParseForm()
-
-	chatId := r.FormValue("chatId")
+	chatId := r.PathValue("chatId")
 	cht := self.hub.GetChat(chatId)
 	if cht == nil {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	msgId := r.FormValue("msgId")
-
+	msgId := r.PathValue("messageId")
 	err := cht.DeleteMessage(msgId)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
 }
 
 func (self *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {

@@ -38,21 +38,21 @@ func routs() http.Handler {
 	}
 
 	mux.Handle("/", OnlyLoggedIn(http.HandlerFunc(chatHandler.Homepage)))
-	mux.Handle("/chatroom", OnlyLoggedIn(http.HandlerFunc(chatHandler.Chatroom)))
-	mux.Handle("/uploadfile", OnlyLoggedIn(http.HandlerFunc(chatHandler.UploadFile)))
+	mux.Handle("GET /chatroom", OnlyLoggedIn(http.HandlerFunc(chatHandler.Chatroom)))
 
 	mux.Handle("GET /login", http.HandlerFunc(chatHandler.LoginPage))
 	mux.Handle("POST /login", http.HandlerFunc(chatHandler.Login))
 
-	mux.Handle("POST /chat", OnlyLoggedIn(http.HandlerFunc(chatHandler.CreateChat)))
-
-	mux.Handle("GET /message", OnlyLoggedIn(http.HandlerFunc(chatHandler.GetMessage)))
-	mux.Handle("GET /message/edit", OnlyLoggedIn(http.HandlerFunc(chatHandler.GetMessageEdit)))
-	mux.Handle("POST /message/edit", OnlyLoggedIn(http.HandlerFunc(chatHandler.PostMessageEdit)))
-	mux.Handle("POST /message/pin", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessagePin)))
-	mux.Handle("POST /message/hide/{hide}", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessageHide)))
-	mux.Handle("POST /message/delete", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessageDelete)))
-	mux.Handle("POST /chat/{chatId}/messages", OnlyLoggedIn(http.HandlerFunc(chatHandler.NewMessage)))
+	mux.Handle("POST /chats", OnlyLoggedIn(http.HandlerFunc(chatHandler.CreateChat)))
+	mux.Handle("POST /chats/{chatId}/uploadfile", OnlyLoggedIn(http.HandlerFunc(chatHandler.UploadFile)))
+	mux.Handle("GET /chats/{chatId}/messages/{messageId}", OnlyLoggedIn(http.HandlerFunc(chatHandler.GetMessage)))
+	mux.Handle("GET /chats/{chatId}/messages/{messageId}/edit", OnlyLoggedIn(http.HandlerFunc(chatHandler.GetMessageEdit)))
+	mux.Handle("PUT /chats/{chatId}/messages/{messageId}/edit", OnlyLoggedIn(http.HandlerFunc(chatHandler.PostMessageEdit)))
+	mux.Handle("PUT /chats/{chatId}/messages/{messageId}/pin", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessagePin)))
+	mux.Handle("PUT /chats/{chatId}/messages/{messageId}/hide", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessageHide(true))))
+	mux.Handle("PUT /chats/{chatId}/messages/{messageId}/show", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessageHide(false))))
+	mux.Handle("DELETE /chats/{chatId}/messages/{messageId}", OnlyLoggedIn(http.HandlerFunc(chatHandler.MessageDelete)))
+	mux.Handle("POST /chats/{chatId}/messages", OnlyLoggedIn(http.HandlerFunc(chatHandler.NewMessage)))
 
 	mux.HandleFunc("/api/get-sessions", func(w http.ResponseWriter, r *http.Request) {
 		seshs := session.GetSessions()
