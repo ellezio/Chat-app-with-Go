@@ -165,7 +165,7 @@ type EventData struct {
 
 type Client interface {
 	GetId() string
-	HandleEvent(evt EventType, data *EventData)
+	HandleEvent(evt EventType, data EventData)
 }
 
 type Store interface {
@@ -196,7 +196,7 @@ type Chat struct {
 
 func NewChat(name string, store Store) *Chat {
 	return &Chat{
-		Id:                  "",
+		Id:                  bson.NilObjectID.Hex(),
 		Name:                name,
 		store:               store,
 		connectedClients:    make(map[string]Client),
@@ -318,7 +318,7 @@ func (self *Chat) DeleteMessage(id string) error {
 	return self.publishEvent(event)
 }
 
-func (self *Chat) Broadcast(evtType EventType, evtData *EventData) {
+func (self *Chat) Broadcast(evtType EventType, evtData EventData) {
 	self.clientsMutex.Lock()
 	defer self.clientsMutex.Unlock()
 
@@ -473,7 +473,7 @@ func (self *Hub) Start() error {
 				self.chats[cht.Id] = cht
 				self.chatsMutex.Unlock()
 
-				evtData := &EventData{
+				evtData := EventData{
 					Cht: cht,
 				}
 
@@ -495,7 +495,7 @@ func (self *Hub) Start() error {
 					continue
 				}
 
-				evt := &EventData{
+				evt := EventData{
 					Msg:      &msg,
 					SenderId: event.UserId,
 					Cht:      cht,

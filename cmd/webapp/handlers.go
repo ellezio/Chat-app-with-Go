@@ -339,7 +339,7 @@ type HttpClient struct {
 
 func (self *HttpClient) GetId() string { return self.id }
 
-func (self *HttpClient) HandleEvent(evtType internal.EventType, evtData *internal.EventData) {
+func (self *HttpClient) HandleEvent(evtType internal.EventType, evtData internal.EventData) {
 	ctx := session.ContextWithSessionId(context.Background(), self.SessionId)
 	var html bytes.Buffer
 
