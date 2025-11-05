@@ -426,13 +426,18 @@ func (ms *MongodbStore) GetUser(name string) (*internal.User, error) {
 }
 
 func (ms *MongodbStore) GetUserById(id string) (*internal.User, error) {
-	coll := ms.getUsersCollection()
+	if user := cacheGetUser(id); user != nil {
+		log.Println("User cache - HIT")
+		return user, nil
+	}
+	log.Println("User cache - MISS")
 
 	uid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to parse user id"), err)
 	}
 
+	coll := ms.getUsersCollection()
 	res := coll.FindOne(
 		context.TODO(),
 		bson.M{"_id": uid},
@@ -442,6 +447,8 @@ func (ms *MongodbStore) GetUserById(id string) (*internal.User, error) {
 	if err := res.Decode(&user); err != nil {
 		return nil, errors.Join(fmt.Errorf("failed to get user with id \"%s\"", id), err)
 	}
+
+	cacheInsertUser(&user)
 
 	return &user, nil
 }

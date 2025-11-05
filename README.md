@@ -8,7 +8,7 @@
 
 ### Architecure
 - [X] Queue for incomming messages to process - RabbitMQ
-- [ ] Caching - Redis
+- [X] Caching - Redis
 - [ ] File server for attachments
 - [ ] Api Auth
 
@@ -23,3 +23,4 @@
 
 ### Other
 - [ ] Configuration managment - some research needed on some aproches
+- [ ] Tests

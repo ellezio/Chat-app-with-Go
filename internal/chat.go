@@ -75,7 +75,13 @@ type User struct {
 	Name string        `bson:"name"          json:"name"`
 }
 
-func (u User) String() string { return "" }
+func (m *User) MarshalBinary() ([]byte, error) {
+	return json.Marshal(m)
+}
+
+func (m *User) UnmarshalBinary(data []byte) error {
+	return json.Unmarshal(data, m)
+}
 
 type EventType int
 

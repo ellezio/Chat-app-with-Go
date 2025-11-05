@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/ellezio/Chat-app-with-Go/internal"
 	"github.com/redis/go-redis/v9"
@@ -13,6 +14,7 @@ import (
 There are possible improvments to caching but I cannot find the way that
 speaks to me the most, so I will go with very simple one just to grasp redis.
 
+====================
 At this moment what most speaks to me is:
 chat metadata + buckets
 How I see it:
@@ -25,6 +27,12 @@ The one problem I can think of at this moment is requesting same bucket when it 
 every request will want to create sucha bucket but it can be solved by service that will
 manage cache creation so when there is already request bucket creation other request will
 listen for that bucket until it's created instead of creaing one.
+====================
+Now I thinking about using sorted set to store messages and buckets to be instaces of redis
+categorized by data up-to-date. Sorted set indices will be timestamps with sequence
+number. Timestamp will be fixed to i-bit and sequence number will be (53-i)-bit. Additionaly
+timestamp will have custom epoch and will be set in seconds.
+====================
 
 Possible changes:
 
@@ -104,4 +112,19 @@ func cachePopulateMessages(chatId string, msgs []*internal.Message) {
 		log.Println(err)
 		return
 	}
+}
+
+func cacheInsertUser(user *internal.User) {
+	k := "user:" + user.Id.Hex()
+	cache.Set(context.Background(), k, user, time.Hour)
+}
+
+func cacheGetUser(userId string) *internal.User {
+	k := "user:" + userId
+	var user internal.User
+	if err := cache.Get(context.Background(), k).Scan(&user); err != nil {
+		return nil
+	}
+
+	return &user
 }

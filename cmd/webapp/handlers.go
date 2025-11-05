@@ -69,7 +69,6 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	user, err := sto.GetUser(username)
 	if err != nil {
-		log.Printf("error while login err %v", err)
 		// TODO: move it to some registration
 		user = &internal.User{Name: username}
 		if err = sto.CreateUser(user); err != nil {
