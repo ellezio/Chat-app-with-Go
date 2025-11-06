@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/ellezio/Chat-app-with-Go/internal"
+	"github.com/ellezio/Chat-app-with-Go/internal/config"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -72,16 +72,13 @@ func (m *Message) toInternal(user internal.User) *internal.Message {
 
 var client *mongo.Client
 
-func InitConn() error {
+func InitConn(dbConfig config.MongoDB, cacheConfig config.Redis) error {
 	var err error
 
-	uri := os.Getenv("MONGODB_URI")
-	uri = fmt.Sprintf("mongodb://%s", uri)
-
-	opts := options.Client().ApplyURI(uri)
+	opts := options.Client().ApplyURI(dbConfig.ConnectionString)
 	client, err = mongo.Connect(opts)
 
-	initCacheConnection()
+	initCacheConnection(cacheConfig)
 
 	return err
 }

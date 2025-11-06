@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/ellezio/Chat-app-with-Go/internal/config"
 	"github.com/ellezio/Chat-app-with-Go/internal/session"
 	"github.com/ellezio/Chat-app-with-Go/internal/store"
 )
@@ -23,7 +24,18 @@ func routs() http.Handler {
 	filesDir := http.FileServer(http.Dir("web/files"))
 	mux.Handle("/files/", http.StripPrefix("/files/", filesDir))
 
-	err := store.InitConn()
+	b, err := os.ReadFile("config.json")
+	if err != nil {
+		panic(err)
+	}
+
+	var cfg config.Configuration
+	err = json.Unmarshal(b, &cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	err = store.InitConn(cfg.MongoDB, cfg.Redis)
 	if err != nil {
 		panic(err)
 	}
@@ -32,7 +44,7 @@ func routs() http.Handler {
 	log.SetFlags(log.LstdFlags)
 
 	chatHandler, hub := newChatHandler()
-	err = hub.Start()
+	err = hub.Start(cfg.RabbitMQ)
 	if err != nil {
 		panic(err)
 	}

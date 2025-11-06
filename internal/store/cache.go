@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ellezio/Chat-app-with-Go/internal"
+	"github.com/ellezio/Chat-app-with-Go/internal/config"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -61,12 +62,11 @@ but downside of it is more redis operation to perform
 
 var cache *redis.Client
 
-func initCacheConnection() {
+func initCacheConnection(c config.Redis) {
 	cache = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "",
-		DB:       0,
-		Protocol: 2,
+		Addr:     c.Addr,
+		Password: c.Pass,
+		DB:       c.DB,
 	})
 }
 

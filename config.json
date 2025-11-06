@@ -1,0 +1,15 @@
+{
+	"webapp": {},
+	"chatServer": {},
+	"redis": {
+		"addr": "localhost:6379",
+		"pass": "",
+		"db": 0
+	},
+	"mongodb": {
+		"connectionString": "mongodb://localhost:27017"
+	},
+	"rabbitmq": {
+		"connectionString": "amqp://guest:guest@localhost:5672"
+	}
+}

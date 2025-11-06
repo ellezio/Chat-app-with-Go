@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 
 	"github.com/ellezio/Chat-app-with-Go/internal"
+	"github.com/ellezio/Chat-app-with-Go/internal/config"
 	"github.com/ellezio/Chat-app-with-Go/internal/store"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -147,13 +149,24 @@ func (h *handler) broadcast(d *amqp.Delivery, ch *amqp.Channel, event internal.C
 }
 
 func main() {
-	err := store.InitConn()
+	b, err := os.ReadFile("config.json")
+	if err != nil {
+		panic(err)
+	}
+
+	var cfg config.Configuration
+	err = json.Unmarshal(b, &cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	err = store.InitConn(cfg.MongoDB, cfg.Redis)
 	if err != nil {
 		panic(err)
 	}
 
 	// TODO: setup non-default credentials
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	conn, err := amqp.Dial(cfg.RabbitMQ.ConnectionString)
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
 

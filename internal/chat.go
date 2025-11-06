@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ellezio/Chat-app-with-Go/internal/config"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -363,8 +364,8 @@ func NewHub(store Store) *Hub {
 	}
 }
 
-func (self *Hub) Start() error {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+func (self *Hub) Start(cfg config.RabbitMQ) error {
+	conn, err := amqp.Dial(cfg.ConnectionString)
 	if err != nil {
 		return fmt.Errorf("Failed to connect to RabbitMQ")
 	}
