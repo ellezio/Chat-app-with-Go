@@ -165,7 +165,6 @@ func main() {
 		panic(err)
 	}
 
-	// TODO: setup non-default credentials
 	conn, err := amqp.Dial(cfg.RabbitMQ.ConnectionString)
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()

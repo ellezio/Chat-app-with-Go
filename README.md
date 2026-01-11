@@ -3,8 +3,7 @@
 #### Multiple clients
 - [ ] CLI
 - [ ] Desktop App
-- [/] Web Client
-    - [ ] WebSocket reconnecting
+- [X] Web Client
 
 ### Architecure
 - [X] Queue for incomming messages to process - RabbitMQ
@@ -24,3 +23,4 @@
 ### Other
 - [ ] Configuration managment - some research needed on some aproches
 - [ ] Tests
+- [ ] WebSocket reconnecting
