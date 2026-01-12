@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"sync"
 
 	"github.com/a-h/templ"
@@ -24,8 +22,9 @@ import (
 // TODO: add some meaningful repsonse messages
 
 type ChatHandler struct {
-	upgrader websocket.Upgrader
-	hub      *internal.Hub
+	upgrader     websocket.Upgrader
+	hub          *internal.Hub
+	fileUploader FileUploader
 }
 
 var sto = &store.MongodbStore{}
@@ -178,13 +177,6 @@ func (self *ChatHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
-	err := r.ParseMultipartForm(1024)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
 	chatId := r.PathValue("chatId")
 	cht := self.hub.GetChat(chatId)
 	if cht == nil {
@@ -202,25 +194,17 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	dstFile, err := os.Create("web/files/" + fileHeader.Filename)
+	savedFilename, err := self.fileUploader.Upload(fileHeader.Filename, file)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	defer dstFile.Close()
-
-	_, err = io.Copy(dstFile, file)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(http.StatusInternalServerError)
+		log.Println("failed to upload file", err)
+		http.Error(w, "Unexpected error while uploading file", http.StatusInternalServerError)
 		return
 	}
 
 	msg := internal.New(
 		cht.Id,
 		sesh.User.Id,
-		fileHeader.Filename,
+		savedFilename,
 		internal.ImageMessage,
 	)
 

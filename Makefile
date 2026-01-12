@@ -12,7 +12,8 @@ all:
 
 run:
 	@MONGODB_URI=$(MONGODB_URI) go run ./cmd/webapp &
-	@MONGODB_URI=$(MONGODB_URI) go run ./cmd/chat-server
+	@MONGODB_URI=$(MONGODB_URI) go run ./cmd/chat-server &
+	@go run ./cmd/file-server --dir ./web/files
 
 templ_watch:
 	@templ generate --watch
