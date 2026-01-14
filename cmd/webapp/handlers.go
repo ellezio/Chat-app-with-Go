@@ -91,6 +91,8 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
+	// TODO: proper check
+	self.upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 	conn, err := self.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)

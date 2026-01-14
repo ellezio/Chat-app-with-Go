@@ -20,10 +20,6 @@ func routs() http.Handler {
 	mux.Handle("/js/", assetsDir)
 	mux.Handle("/css/", assetsDir)
 
-	// TODO: separe file server
-	filesDir := http.FileServer(http.Dir("web/files"))
-	mux.Handle("/files/", http.StripPrefix("/files/", filesDir))
-
 	b, err := os.ReadFile("config.json")
 	if err != nil {
 		panic(err)

@@ -16,3 +16,13 @@ services:
     image: redis:8.2.2-alpine
     ports:
       - '6379:6379'
+
+  nginx:
+    image: nginx:1.29.4
+    ports:
+      - '80:80'
+    volumes:
+      - './nginx:/etc/nginx/conf.d'
+      - './web/files:/usr/srv/files'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
