@@ -51,6 +51,9 @@ func routs() http.Handler {
 	mux.Handle("GET /login", http.HandlerFunc(chatHandler.LoginPage))
 	mux.Handle("POST /login", http.HandlerFunc(chatHandler.Login))
 
+	mux.Handle("GET /register", http.HandlerFunc(chatHandler.RegisterPage))
+	mux.Handle("POST /register", http.HandlerFunc(chatHandler.Register))
+
 	mux.Handle("POST /chats", OnlyLoggedIn(http.HandlerFunc(chatHandler.CreateChat)))
 	mux.Handle("POST /chats/{chatId}/uploadfile", OnlyLoggedIn(http.HandlerFunc(chatHandler.UploadFile)))
 	mux.Handle("GET /chats/{chatId}/messages/{messageId}", OnlyLoggedIn(http.HandlerFunc(chatHandler.GetMessage)))

@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -71,9 +73,27 @@ func New(chatId, authorId, content string, typ MessageType) *Message {
 	}
 }
 
+// TODO move to some secret manager
+const secret = "secret"
+
+func hashPassword(pass string) string {
+	h := sha256.New()
+	h.Write([]byte(secret + pass))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 type User struct {
-	Id   bson.ObjectID `bson:"_id,omitempty" json:"id"`
-	Name string        `bson:"name"          json:"name"`
+	Id       bson.ObjectID `bson:"_id,omitempty" json:"id"`
+	Name     string        `bson:"name"          json:"name"`
+	Password string        `bson:"password"      json:"-"`
+}
+
+func NewUser(name, pass string) *User {
+	return &User{Name: name, Password: hashPassword(pass)}
+}
+
+func (u *User) CheckPass(pass string) bool {
+	return hashPassword(pass) == u.Password
 }
 
 func (m *User) MarshalBinary() ([]byte, error) {

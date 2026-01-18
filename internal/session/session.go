@@ -15,11 +15,9 @@ package session
 
 import (
 	"context"
-	"log"
+	"crypto/rand"
 	"net/http"
 	"sync"
-
-	"github.com/google/uuid"
 )
 
 var sessions = make(map[SessionId]Session)
@@ -28,10 +26,10 @@ var mutex = &sync.RWMutex{}
 var sessionIdContextKey = "sessionId"
 var sessionIdCookieKey = "sessionId"
 
-type SessionId uuid.UUID
+type SessionId string
 
 func (sid SessionId) String() string {
-	return uuid.UUID(sid).String()
+	return string(sid)
 }
 
 type UserData struct {
@@ -46,7 +44,7 @@ type Session struct {
 
 func New() *Session {
 	session := Session{
-		Id:   SessionId(uuid.New()),
+		Id:   SessionId(rand.Text()),
 		User: UserData{},
 	}
 
@@ -68,14 +66,14 @@ func GetSessionID(ctx context.Context) SessionId {
 		return id
 	}
 
-	return SessionId(uuid.Nil)
+	return SessionId("")
 }
 
 func GetSessionByID(sID SessionId) *Session {
 	mutex.RLock()
 	defer mutex.RUnlock()
 
-	if sID != SessionId(uuid.Nil) {
+	if sID != SessionId("") {
 		if session, ok := sessions[sID]; ok {
 			return &session
 		}
@@ -130,11 +128,7 @@ func Middleware(next http.Handler) http.Handler {
 		ctx := r.Context()
 
 		if cookie, err := r.Cookie(sessionIdCookieKey); err == nil {
-			if sID, err := uuid.Parse(cookie.Value); err == nil {
-				ctx = ContextWithSessionId(ctx, SessionId(sID))
-			} else {
-				log.Println(err)
-			}
+			ctx = ContextWithSessionId(ctx, SessionId(cookie.Value))
 		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -154,7 +148,7 @@ func GetSessions() any {
 	var result = make([]Session, 0, len(sessions))
 
 	for id, session := range sessions {
-		result = append(result, Session{uuid.UUID(id).String(), session.User.Name, session.User.Id})
+		result = append(result, Session{id.String(), session.User.Name, session.User.Id})
 	}
 
 	return result

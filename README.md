@@ -8,8 +8,8 @@
 ### Architecure
 - [X] Queue for incomming messages to process - RabbitMQ
 - [X] Caching - Redis
-- [ ] File server for attachments
-- [ ] Api Auth
+- [X] File server for attachments
+- [X] Authorization
 
 ### Telemetry
 - [ ] Logs monitoring - ELK stack
@@ -24,3 +24,4 @@
 - [ ] Configuration managment - some research needed on some aproches
 - [ ] Tests
 - [ ] WebSocket reconnecting
+- [ ] TLS

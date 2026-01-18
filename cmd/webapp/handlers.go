@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
@@ -52,6 +54,14 @@ func (self *ChatHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
 	components.LoginPage().Render(r.Context(), w)
 }
 
+func (self *ChatHandler) RegisterPage(w http.ResponseWriter, r *http.Request) {
+	if session.IsLoggedIn(r.Context()) {
+		http.Redirect(w, r, "/", 302)
+	}
+
+	components.RegisterPage().Render(r.Context(), w)
+}
+
 func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		log.Println(err)
@@ -59,22 +69,28 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	wr := bufio.NewWriter(w)
 	username := r.PostForm.Get("username")
 	if username == "" {
+		components.ErrorMsg("username", "Fill the field").Render(r.Context(), wr)
+	}
+
+	password := r.PostForm.Get("password")
+	if password == "" {
+		components.ErrorMsg("password", "Fill the field").Render(r.Context(), wr)
+	}
+
+	if username == "" || password == "" {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		components.ErrorMsg("username", "Fill the field").Render(r.Context(), w)
+		wr.Flush()
 		return
 	}
 
 	user, err := sto.GetUser(username)
-	if err != nil {
-		// TODO: move it to some registration
-		user = &internal.User{Name: username}
-		if err = sto.CreateUser(user); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			log.Println(err)
-			return
-		}
+	if err != nil || !user.CheckPass(password) {
+		w.WriteHeader(http.StatusUnauthorized)
+		components.ErrorMsg("login", "username or password is invalid").Render(r.Context(), w)
+		return
 	}
 
 	userData := session.UserData{
@@ -90,6 +106,50 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add("Hx-Redirect", "/")
 }
 
+func (self *ChatHandler) Register(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	wr := bufio.NewWriter(w)
+	username := r.PostForm.Get("username")
+	if username == "" {
+		components.ErrorMsg("username", "Fill the field").Render(r.Context(), wr)
+	}
+
+	password := r.PostForm.Get("password")
+	if password == "" {
+		components.ErrorMsg("password", "Fill the field").Render(r.Context(), wr)
+	}
+
+	if username == "" || password == "" {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		wr.Flush()
+		return
+	}
+
+	user, err := sto.GetUser(username)
+	if err != nil && !errors.Is(err, store.ErrNoRecord) {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err)
+		return
+	} else if user != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		components.ErrorMsg("register", "user already exists").Render(r.Context(), w)
+		return
+	}
+
+	user = internal.NewUser(username, password)
+	if err := sto.CreateUser(user); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Println(err)
+		return
+	}
+
+	w.Header().Add("Hx-Redirect", "/login")
+}
 func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 	// TODO: proper check
 	self.upgrader.CheckOrigin = func(r *http.Request) bool { return true }

@@ -17,6 +17,7 @@ import (
 var ErrParseId = errors.New("cannot parse id")
 var ErrDecodeMessage = errors.New("cannot decode message")
 var ErrDecodeChat = errors.New("cannot decode chat")
+var ErrNoRecord = errors.New("record does't exist")
 
 type Chat struct {
 	Id   bson.ObjectID `bson:"_id,omitempty"`
@@ -416,7 +417,12 @@ func (ms *MongodbStore) GetUser(name string) (*internal.User, error) {
 
 	var user internal.User
 	if err := res.Decode(&user); err != nil {
-		return nil, errors.Join(fmt.Errorf("failed to get user with name \"%s\"", name), err)
+		switch {
+		case errors.Is(err, mongo.ErrNoDocuments):
+			return nil, ErrNoRecord
+		default:
+			return nil, errors.Join(fmt.Errorf("failed to get user with name \"%s\"", name), err)
+		}
 	}
 
 	return &user, nil
