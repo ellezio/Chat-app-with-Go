@@ -12,8 +12,7 @@
 - [X] Authorization
 
 ### Telemetry
-- [ ] Logs monitoring - ELK stack
-- [ ] Metrics - ?
+- [ ] Logging
 
 ### CI/CD
 - [ ] High availablity deployment - implementing blue-green mechanism

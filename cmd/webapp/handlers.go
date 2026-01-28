@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 
@@ -27,14 +28,15 @@ type ChatHandler struct {
 	upgrader     websocket.Upgrader
 	hub          *internal.Hub
 	fileUploader FileUploader
+	logger       *slog.Logger
+	store        internal.Store
 }
 
-var sto = &store.MongodbStore{}
-
-func newChatHandler() (*ChatHandler, *internal.Hub) {
+func newChatHandler(store internal.Store, logger *slog.Logger) (*ChatHandler, *internal.Hub) {
 	h := &ChatHandler{
 		upgrader: websocket.Upgrader{},
-		hub:      internal.NewHub(sto),
+		hub:      internal.NewHub(store),
+		logger:   logger,
 	}
 
 	h.hub.LoadChatsFromStore()
@@ -86,7 +88,7 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := sto.GetUser(username)
+	user, err := self.store.GetUser(username)
 	if err != nil || !user.CheckPass(password) {
 		w.WriteHeader(http.StatusUnauthorized)
 		components.ErrorMsg("login", "username or password is invalid").Render(r.Context(), w)
@@ -130,7 +132,7 @@ func (self *ChatHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := sto.GetUser(username)
+	user, err := self.store.GetUser(username)
 	if err != nil && !errors.Is(err, store.ErrNoRecord) {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println(err)
@@ -142,7 +144,7 @@ func (self *ChatHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user = internal.NewUser(username, password)
-	if err := sto.CreateUser(user); err != nil {
+	if err := self.store.CreateUser(user); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Println(err)
 		return
@@ -275,7 +277,7 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 	msgId := r.PathValue("messageId")
-	msg, err := sto.GetMessage(msgId)
+	msg, err := h.store.GetMessage(msgId)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -287,7 +289,7 @@ func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
 
 func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
 	msgId := r.PathValue("messageId")
-	msg, err := sto.GetMessage(msgId)
+	msg, err := h.store.GetMessage(msgId)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)

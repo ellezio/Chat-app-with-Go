@@ -200,6 +200,9 @@ type Store interface {
 	UpdateMessageContent(id string, content string) (*Message, error)
 	SetHideMessage(id string, user string, value bool) (*Message, error)
 	DeleteMessage(id string) (*Message, error)
+
+	GetUser(string) (*User, error)
+	CreateUser(*User) error
 }
 
 type Chat struct {
