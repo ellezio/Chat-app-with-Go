@@ -376,7 +376,7 @@ type Hub struct {
 }
 
 func NewHub(store Store) *Hub {
-	return &Hub{
+	h := &Hub{
 		store: store,
 
 		clientMetas:      make(map[string]*ClientMeta),
@@ -385,6 +385,11 @@ func NewHub(store Store) *Hub {
 		chats:      make(map[string]*Chat),
 		chatsMutex: sync.Mutex{},
 	}
+	// TODO:
+	// leave constructor with no possible errors,
+	// load chats what firstly requested
+	_ = h.LoadChatsFromStore()
+	return h
 }
 
 func (self *Hub) Start(cfg config.RabbitMQ) error {

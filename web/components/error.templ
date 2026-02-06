@@ -1,0 +1,43 @@
+package components
+
+templ ErrorPage(msg string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<link href="/css/output.css" rel="stylesheet"/>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.6/dist/htmx.min.js" integrity="sha384-Akqfrbj/HpNVo8k11SXBb6TlBWmXXlYQrCSqEWmyKJe+hDm3Z/B2WVG4smwBkRVm" crossorigin="anonymous"></script>
+			<script>
+		</script>
+			<title>Error</title>
+		</head>
+		<body class="bg-delta m-0 overflow-y-hidden h-screen">
+			<div class="flex justify-center items-center fixed left-0 top-0 w-screen h-screen">
+				<div class="bg-red-900 border-2 border-red-400 text-red-50 rounded-md p-4 w-fit h-fit">
+					<h2>Error occurred</h2>
+					<p>{ msg }</p>
+				</div>
+			</div>
+		</body>
+	</html>
+}
+
+templ ErrorPopup(msg string) {
+	<div hx-swap-oob="beforeend:body">
+		<div class="flex justify-center items-center fixed left-0 top-0 w-screen h-screen backdrop-blur-sm z-40">
+			<div class=" bg-red-900 border-2 border-red-400 text-red-50 rounded-md p-4 w-fit h-fit z-50">
+				<h2>Error occurred</h2>
+				<p>{ msg }</p>
+				<script>
+				(() => {
+					const backdrop = document.currentScript.closest('div').parentNode;
+					backdrop.addEventListener('click', function() {
+						backdrop.remove();
+					})
+				})()
+			</script>
+			</div>
+		</div>
+	</div>
+}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/a-h/templ"
 	"github.com/ellezio/Chat-app-with-Go/internal"
+	"github.com/ellezio/Chat-app-with-Go/internal/log"
 	"github.com/ellezio/Chat-app-with-Go/internal/session"
 	"github.com/ellezio/Chat-app-with-Go/internal/store"
 	"github.com/ellezio/Chat-app-with-Go/web/components"
@@ -25,74 +25,80 @@ import (
 
 type ChatHandler struct {
 	upgrader     websocket.Upgrader
-	hub          *internal.Hub
 	fileUploader FileUploader
-	logger       *slog.Logger
+	hub          *internal.Hub
 	store        internal.Store
 }
 
-func newChatHandler(store internal.Store, logger *slog.Logger) (*ChatHandler, *internal.Hub) {
+func newChatHandler(store internal.Store) (*ChatHandler, *internal.Hub) {
 	h := &ChatHandler{
-		upgrader: websocket.Upgrader{},
-		hub:      internal.NewHub(store),
-		logger:   logger,
-		store:    store,
+		hub:   internal.NewHub(store),
+		store: store,
 	}
 
-	h.hub.LoadChatsFromStore()
 	return h, h.hub
 }
 
-func (self *ChatHandler) Homepage(w http.ResponseWriter, r *http.Request) {
-	chts := self.hub.GetChats()
-	components.Homepage(chts, nil).Render(r.Context(), w)
+func (h *ChatHandler) Homepage(w http.ResponseWriter, r *http.Request) error {
+	chts := h.hub.GetChats()
+
+	var bb bytes.Buffer
+	components.Homepage(chts, nil).Render(r.Context(), &bb)
+	bb.WriteTo(w)
+	return nil
 }
 
-func (self *ChatHandler) LoginPage(w http.ResponseWriter, r *http.Request) {
+func (h *ChatHandler) LoginPage(w http.ResponseWriter, r *http.Request) error {
+	if session.IsLoggedIn(r.Context()) {
+		http.Redirect(w, r, "/", 302)
+		return nil
+	}
+
+	var bb bytes.Buffer
+	components.LoginPage().Render(r.Context(), &bb)
+	bb.WriteTo(w)
+	return nil
+}
+
+func (h *ChatHandler) RegisterPage(w http.ResponseWriter, r *http.Request) error {
 	if session.IsLoggedIn(r.Context()) {
 		http.Redirect(w, r, "/", 302)
 	}
 
-	components.LoginPage().Render(r.Context(), w)
+	var bb bytes.Buffer
+	components.RegisterPage().Render(r.Context(), &bb)
+	bb.WriteTo(w)
+	return nil
 }
 
-func (self *ChatHandler) RegisterPage(w http.ResponseWriter, r *http.Request) {
-	if session.IsLoggedIn(r.Context()) {
-		http.Redirect(w, r, "/", 302)
-	}
-
-	components.RegisterPage().Render(r.Context(), w)
-}
-
-func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *ChatHandler) Login(w http.ResponseWriter, r *http.Request) error {
 	if err := r.ParseForm(); err != nil {
-		LoggerFromContext(r.Context(), self.logger).Error("Failed to parse login form", slog.Any("error", err))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return errors.Join(errors.New("Failed to parse login form"), err)
 	}
 
-	wr := bufio.NewWriter(w)
+	var bb bytes.Buffer
 	username := r.PostForm.Get("username")
 	if username == "" {
-		components.ErrorMsg("username", "Fill the field").Render(r.Context(), wr)
+		components.ErrorMsg("username", "Fill the field").Render(r.Context(), &bb)
 	}
 
 	password := r.PostForm.Get("password")
 	if password == "" {
-		components.ErrorMsg("password", "Fill the field").Render(r.Context(), wr)
+		components.ErrorMsg("password", "Fill the field").Render(r.Context(), &bb)
 	}
 
 	if username == "" || password == "" {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		wr.Flush()
-		return
+		bb.WriteTo(w)
+		return nil
 	}
 
-	user, err := self.store.GetUser(username)
+	user, err := h.store.GetUser(username)
 	if err != nil || !user.CheckPass(password) {
 		w.WriteHeader(http.StatusUnauthorized)
-		components.ErrorMsg("login", "username or password is invalid").Render(r.Context(), w)
-		return
+		components.ErrorMsg("login", "username or password is invalid").Render(r.Context(), &bb)
+		bb.WriteTo(w)
+		return nil
 	}
 
 	userData := session.UserData{
@@ -106,62 +112,57 @@ func (self *ChatHandler) Login(w http.ResponseWriter, r *http.Request) {
 	session.SetSessionCookie(w, sesh)
 
 	w.Header().Add("Hx-Redirect", "/")
+	return nil
 }
 
-func (self *ChatHandler) Register(w http.ResponseWriter, r *http.Request) {
-	logger := LoggerFromContext(r.Context(), self.logger)
+func (h *ChatHandler) Register(w http.ResponseWriter, r *http.Request) error {
 	if err := r.ParseForm(); err != nil {
-		logger.Error("Failed to parse register form", slog.Any("error", err))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return errors.Join(errors.New("failed to parse register form"), err)
 	}
 
-	wr := bufio.NewWriter(w)
+	var bb bytes.Buffer
 	username := r.PostForm.Get("username")
 	if username == "" {
-		components.ErrorMsg("username", "Fill the field").Render(r.Context(), wr)
+		components.ErrorMsg("username", "Fill the field").Render(r.Context(), &bb)
 	}
 
 	password := r.PostForm.Get("password")
 	if password == "" {
-		components.ErrorMsg("password", "Fill the field").Render(r.Context(), wr)
+		components.ErrorMsg("password", "Fill the field").Render(r.Context(), &bb)
 	}
 
 	if username == "" || password == "" {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		wr.Flush()
-		return
+		bb.WriteTo(w)
+		return nil
 	}
 
-	user, err := self.store.GetUser(username)
+	user, err := h.store.GetUser(username)
 	if err != nil && !errors.Is(err, store.ErrNoRecord) {
-		logger.Error("Can't find user", slog.Any("error", err))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return errors.Join(errors.New("can't find user"), err)
 	} else if user != nil {
+		components.ErrorMsg("register", "user already exists").Render(r.Context(), &bb)
 		w.WriteHeader(http.StatusUnauthorized)
-		components.ErrorMsg("register", "user already exists").Render(r.Context(), w)
-		return
+		bb.WriteTo(w)
+		return nil
 	}
 
 	user = internal.NewUser(username, password)
-	if err := self.store.CreateUser(user); err != nil {
-		logger.Error("Can't create user", slog.Any("error", err))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+	if err := h.store.CreateUser(user); err != nil {
+		return errors.Join(errors.New("can't create user"), err)
 	}
 
 	w.Header().Add("Hx-Redirect", "/login")
+	return nil
 }
-func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
-	logger := LoggerFromContext(r.Context(), self.logger)
+func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) error {
+	logger := log.Ctx(r.Context())
 
 	// TODO: proper check
-	self.upgrader.CheckOrigin = func(r *http.Request) bool { return true }
-	conn, err := self.upgrader.Upgrade(w, r, nil)
+	h.upgrader.CheckOrigin = func(r *http.Request) bool { return true }
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Error("Failed to upgrade connection to websocket", slog.Any("error", err))
-		return
+		return errors.Join(errors.New("failed to upgrade connection to websocket"), err)
 	}
 	defer conn.Close()
 
@@ -170,10 +171,13 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 	logger.Debug("Client connected", slog.String("name", sesh.User.Name))
 
-	if _, _, err = self.hub.ConnectClient("", client); err != nil {
+	if _, _, err = h.hub.ConnectClient("", client); err != nil {
+		// NOTE:
+		// this is example of problem with error handling with middleware when we want to log additional info to error.
+		// Either we can return some error struct/map or just two logs in same context
+		// I will go with two logs, it's easy to track due to trace id.
 		logger.Error("Can't connect client", slog.Any("client", client))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	for {
@@ -199,16 +203,16 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 
 		switch payload.Type {
 		case "changeChat":
-			cht, prevCht, err := self.hub.ConnectClient(chatId, client)
+			cht, prevCht, err := h.hub.ConnectClient(chatId, client)
 			if err != nil {
 				logger.Error("Failed to connect client", slog.Any("error", err))
-				return
+				break
 			}
 
 			msgs, err := cht.GetMessages()
 			if err != nil {
 				logger.Error("Change chat: Failed to get messages", slog.Any("error", err))
-				return
+				break
 			}
 
 			ctx := session.ContextWithSessionId(context.Background(), client.SessionId)
@@ -224,10 +228,11 @@ func (self *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	self.hub.RemoveClient(client)
+	h.hub.RemoveClient(client)
+	return nil
 }
 
-func (self *ChatHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
+func (h *ChatHandler) NewMessage(w http.ResponseWriter, r *http.Request) error {
 	chatId := r.PathValue("chatId")
 	msgContent := r.FormValue("msg")
 	sesh := session.GetSession(r.Context())
@@ -239,18 +244,19 @@ func (self *ChatHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 		internal.TextMessage,
 	)
 
-	cht := self.hub.GetChat(chatId)
+	cht := h.hub.GetChat(chatId)
 	cht.NewMessage(msg, sesh.User.Id)
+	return nil
 }
 
-func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
-	logger := LoggerFromContext(r.Context(), self.logger)
+func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) error {
+	logger := log.Ctx(r.Context())
 
 	chatId := r.PathValue("chatId")
-	cht := self.hub.GetChat(chatId)
+	cht := h.hub.GetChat(chatId)
 	if cht == nil {
 		w.WriteHeader(http.StatusNotFound)
-		return
+		return nil
 	}
 
 	sesh := session.GetSession(r.Context())
@@ -259,15 +265,13 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Error("Can't parse form file", slog.Any("error", err))
 		w.WriteHeader(http.StatusBadRequest)
-		return
+		return nil
 	}
 	defer file.Close()
 
-	savedFilename, err := self.fileUploader.Upload(fileHeader.Filename, file)
+	savedFilename, err := h.fileUploader.Upload(fileHeader.Filename, file)
 	if err != nil {
-		logger.Error("Can't upload file", slog.Any("error", err))
-		http.Error(w, "Unexpected error while uploading file", http.StatusInternalServerError)
-		return
+		return errors.Join(errors.New("can't upload file"), err)
 	}
 
 	msg := internal.New(
@@ -278,104 +282,98 @@ func (self *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	)
 
 	cht.NewMessage(msg, sesh.User.Id)
+	return nil
 }
 
-func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) {
-	logger := LoggerFromContext(r.Context(), h.logger)
+func (h *ChatHandler) GetMessage(w http.ResponseWriter, r *http.Request) error {
 	msgId := r.PathValue("messageId")
 	msg, err := h.store.GetMessage(msgId)
 	if err != nil {
-		logger.Error("Can't get message", slog.Any("error", err))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return errors.Join(errors.New("can't get message"), err)
 	}
 
-	components.MessageBox(msg, true, false).Render(r.Context(), w)
+	var bb bytes.Buffer
+	components.MessageBox(msg, true, false).Render(r.Context(), &bb)
+	bb.WriteTo(w)
+	return nil
 }
 
-func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) {
-	logger := LoggerFromContext(r.Context(), h.logger)
+func (h *ChatHandler) GetMessageEdit(w http.ResponseWriter, r *http.Request) error {
 	msgId := r.PathValue("messageId")
 	msg, err := h.store.GetMessage(msgId)
 	if err != nil {
-		logger.Error("Can't get message", slog.Any("error", err))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return errors.Join(errors.New("can't get message"), err)
 	}
 
-	components.
-		MessageBox(msg, true, true).
-		Render(r.Context(), w)
+	var bb bytes.Buffer
+	components.MessageBox(msg, true, true).Render(r.Context(), &bb)
+	bb.WriteTo(w)
+	return nil
 }
 
-func (self *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request) {
-	logger := LoggerFromContext(r.Context(), self.logger)
+func (h *ChatHandler) PostMessageEdit(w http.ResponseWriter, r *http.Request) error {
 	r.ParseForm()
 
 	chatId := r.PathValue("chatId")
-	cht := self.hub.GetChat(chatId)
+	cht := h.hub.GetChat(chatId)
 	if cht == nil {
 		w.WriteHeader(http.StatusNotFound)
-		return
+		return nil
 	}
 
 	msgId := r.PathValue("messageId")
 	msgContent := r.FormValue("msgContent")
-	err := cht.UpdateMessageContent(msgId, msgContent)
-	if err != nil {
-		logger.Error("Can't update message's content", slog.Any("error", err))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+	if err := cht.UpdateMessageContent(msgId, msgContent); err != nil {
+		return errors.Join(errors.New("Can't update message's content"), err)
 	}
+	return nil
 }
 
-func (self *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) {
+func (h *ChatHandler) MessagePin(w http.ResponseWriter, r *http.Request) error {
 	w.WriteHeader(http.StatusNotImplemented)
+	return nil
 }
 
-func (self *ChatHandler) MessageHide(hide bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		logger := LoggerFromContext(r.Context(), self.logger)
+func (h *ChatHandler) MessageHide(hide bool) func(http.ResponseWriter, *http.Request) error {
+	return func(w http.ResponseWriter, r *http.Request) error {
 		chatId := r.PathValue("chatId")
-		cht := self.hub.GetChat(chatId)
+		cht := h.hub.GetChat(chatId)
 		if cht == nil {
 			w.WriteHeader(http.StatusNotFound)
-			return
+			return nil
 		}
 
 		sesh := session.GetSession(r.Context())
 		msgId := r.PathValue("messageId")
 		err := cht.SetHideMessage(msgId, sesh.User.Id, hide)
 		if err != nil {
-			logger.Error("Failed set message to hidden", slog.Any("error", err))
-			w.WriteHeader(http.StatusInternalServerError)
-			return
+			return errors.Join(errors.New("Failed set message to hidden"), err)
 		}
+		return nil
 	}
 }
 
-func (self *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) {
-	logger := LoggerFromContext(r.Context(), self.logger)
+func (h *ChatHandler) MessageDelete(w http.ResponseWriter, r *http.Request) error {
 	chatId := r.PathValue("chatId")
-	cht := self.hub.GetChat(chatId)
+	cht := h.hub.GetChat(chatId)
 	if cht == nil {
 		w.WriteHeader(http.StatusNotFound)
-		return
+		return nil
 	}
 
 	msgId := r.PathValue("messageId")
 	err := cht.DeleteMessage(msgId)
 	if err != nil {
-		logger.Error("Failed to delete message", slog.Any("error", err))
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+		errors.Join(errors.New("Failed to delete message"), err)
 	}
+	return nil
 }
 
-func (self *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) {
+func (h *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) error {
 	r.ParseForm()
 	chatName := r.FormValue("chatName")
-	self.hub.AddChat(chatName)
+	h.hub.AddChat(chatName)
+	return nil
 }
 
 func NewHttpClient(conn *websocket.Conn, sessionId session.SessionId, logger *slog.Logger) *HttpClient {
@@ -398,10 +396,10 @@ type HttpClient struct {
 	logger *slog.Logger
 }
 
-func (self *HttpClient) GetId() string { return self.id }
+func (c *HttpClient) GetId() string { return c.id }
 
-func (self *HttpClient) HandleEvent(evtType internal.EventType, evtData internal.EventData) {
-	ctx := session.ContextWithSessionId(context.Background(), self.SessionId)
+func (c *HttpClient) HandleEvent(evtType internal.EventType, evtData internal.EventData) {
+	ctx := session.ContextWithSessionId(context.Background(), c.SessionId)
 	var html bytes.Buffer
 
 	switch evtType {
@@ -426,7 +424,7 @@ func (self *HttpClient) HandleEvent(evtType internal.EventType, evtData internal
 		internal.Event_EditMessage,
 		internal.Event_HideMessage,
 		internal.Event_PinMessage:
-		if evtData.OnlySender && self.id != evtData.SenderId {
+		if evtData.OnlySender && c.id != evtData.SenderId {
 			break
 		}
 
@@ -451,14 +449,14 @@ func (self *HttpClient) HandleEvent(evtType internal.EventType, evtData internal
 			Render(ctx, &html)
 	}
 
-	self.Send(html.Bytes())
+	c.Send(html.Bytes())
 }
 
-func (self *HttpClient) Send(data []byte) {
-	self.connMux.Lock()
-	defer self.connMux.Unlock()
+func (c *HttpClient) Send(data []byte) {
+	c.connMux.Lock()
+	defer c.connMux.Unlock()
 
-	if err := self.conn.WriteMessage(websocket.TextMessage, data); err != nil {
-		self.logger.Error("Failed to write message to http client", slog.Any("error", err))
+	if err := c.conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		c.logger.Error("Failed to write message to http client", slog.Any("error", err))
 	}
 }

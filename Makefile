@@ -6,17 +6,21 @@ TAILWIND_OUTPUT_CSS := web/assets/css/output.css
 MONGODB_URI ?= localhost:27017
 
 all:
-	$(MAKE) templ_watch &
-	$(MAKE) tailwind_watch &
-	$(MAKE) run
+	@trap 'kill 0' EXIT; \
+	$(MAKE) templ_watch & \
+	$(MAKE) tailwind_watch & \
+	$(MAKE) run & \
+	wait
 
 run:
-	@go run ./cmd/file-server --dir ./web/files &
-	@MONGODB_URI=$(MONGODB_URI) go run ./cmd/chat-server &
-	@MONGODB_URI=$(MONGODB_URI) go run ./cmd/webapp
+	@trap 'kill 0' EXIT; \
+	go run ./cmd/file-server --dir ./web/files & \
+	MONGODB_URI=$(MONGODB_URI) go run ./cmd/chat-server & \
+	MONGODB_URI=$(MONGODB_URI) go run ./cmd/webapp & \
+	wait
 
 templ_watch:
-	@templ generate --watch
+	templ generate --watch
 
 tailwind_watch:
-	@tailwindcss -i $(TAILWIND_INPUT_CSS) -o $(TAILWIND_OUTPUT_CSS) --watch
+	tailwindcss -i $(TAILWIND_INPUT_CSS) -o $(TAILWIND_OUTPUT_CSS) --watch
