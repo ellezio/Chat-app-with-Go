@@ -8,14 +8,12 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"time"
 
 	"github.com/ellezio/Chat-app-with-Go/internal/config"
 	"github.com/ellezio/Chat-app-with-Go/internal/log"
 	"github.com/ellezio/Chat-app-with-Go/internal/session"
 	"github.com/ellezio/Chat-app-with-Go/internal/store"
 	"github.com/ellezio/Chat-app-with-Go/web/components"
-	"github.com/google/uuid"
 )
 
 func setupMux(chatHandler *ChatHandler) http.Handler {
@@ -101,26 +99,6 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func loggerMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
-		traceId := uuid.NewString()
-
-		reqLogger := logger.With(
-			slog.String("trace_id", traceId),
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-		)
-
-		ctx := log.WithContext(r.Context(), reqLogger)
-
-		reqLogger.Info("request started")
-		next.ServeHTTP(w, r.WithContext(ctx))
-		reqLogger.Info("request completed", slog.Duration("duration", time.Duration(time.Since(start))))
-	})
-}
-
 func readConfig() config.Configuration {
 	b, err := os.ReadFile("config.json")
 	if err != nil {
@@ -137,7 +115,8 @@ func readConfig() config.Configuration {
 }
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})).
+		With("servie", "webapp")
 	log.DefaultContextLogger = logger
 
 	host := flag.String("host", "", "")
@@ -162,7 +141,7 @@ func main() {
 
 	addr := net.JoinHostPort(*host, *port)
 	logger.Info(fmt.Sprintf("Listening at %s", addr))
-	err = http.ListenAndServe(addr, loggerMiddleware(mux, logger))
+	err = http.ListenAndServe(addr, log.Middleware(mux, logger))
 	if err != nil {
 		logger.Error("Server stop listening", slog.Any("error", err))
 	}

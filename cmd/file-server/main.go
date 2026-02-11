@@ -5,12 +5,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/ellezio/Chat-app-with-Go/internal/log"
 )
 
 var mu sync.Mutex
@@ -100,6 +103,10 @@ func generateFilename() string {
 }
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})).
+		With("service", "file-server")
+	log.DefaultContextLogger = logger
+
 	if err := parseFlags(); err != nil {
 		panic(err)
 	}
@@ -112,10 +119,11 @@ func main() {
 		panic(err)
 	}
 
-	http.Handle("GET /", http.FileServer(http.Dir(cfg.dir)))
-	http.HandleFunc("POST /", handleUpload)
+	mux := http.NewServeMux()
+	mux.Handle("GET /", http.FileServer(http.Dir(cfg.dir)))
+	mux.HandleFunc("POST /", handleUpload)
 
-	if err := http.ListenAndServe(":3001", nil); err != nil {
+	if err := http.ListenAndServe(":3001", log.Middleware(mux, logger)); err != nil {
 		panic(err)
 	}
 }

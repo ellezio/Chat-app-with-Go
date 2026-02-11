@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"sync"
 
 	"github.com/ellezio/Chat-app-with-Go/internal"
 	"github.com/ellezio/Chat-app-with-Go/internal/config"
+	"github.com/ellezio/Chat-app-with-Go/internal/log"
 	"github.com/ellezio/Chat-app-with-Go/internal/store"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -17,12 +18,6 @@ type chat struct {
 	id    string
 	users map[string]bool
 	mu    sync.Mutex
-}
-
-func failOnError(err error, msg string) {
-	if err != nil {
-		log.Panicf("%s: %s", msg, err)
-	}
 }
 
 // NOTE:
@@ -44,8 +39,6 @@ func assertAndCall[T any](eventName string, fn func(evt internal.ChatEvent, arg 
 }
 
 func (h *handler) handle(d *amqp.Delivery, ch *amqp.Channel) error {
-	log.Printf("Received a message: %s", d.Body)
-
 	var event internal.ChatEvent
 	err := event.UnmarshalJSON(d.Body)
 	if err != nil {
@@ -95,7 +88,7 @@ func (h *handler) newMessage(evt internal.ChatEvent, details internal.MessageEve
 
 	err := h.store.SaveMessage(msg)
 	if err != nil {
-		log.Println(err)
+		return nil, err
 	}
 
 	return msg, nil
@@ -149,28 +142,41 @@ func (h *handler) broadcast(d *amqp.Delivery, ch *amqp.Channel, event internal.C
 }
 
 func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})).
+		With("service", "chat-server")
+	log.DefaultContextLogger = logger
+
 	b, err := os.ReadFile("config.json")
 	if err != nil {
-		panic(err)
+		logger.Error("failed to read config file", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	var cfg config.Configuration
 	err = json.Unmarshal(b, &cfg)
 	if err != nil {
-		panic(err)
+		logger.Error("failed to laod config", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	err = store.InitConn(cfg.MongoDB, cfg.Redis)
 	if err != nil {
-		panic(err)
+		logger.Error("failed to establish store connection", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	conn, err := amqp.Dial(cfg.RabbitMQ.ConnectionString)
-	failOnError(err, "Failed to connect to RabbitMQ")
+	if err != nil {
+		logger.Error("failed to connect to RabbitMQ", slog.Any("error", err))
+		os.Exit(1)
+	}
 	defer conn.Close()
 
 	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
+	if err != nil {
+		logger.Error("failed to open a channel", slog.Any("error", err))
+		os.Exit(1)
+	}
 	defer ch.Close()
 
 	err = ch.ExchangeDeclare(
@@ -182,7 +188,10 @@ func main() {
 		false,                // no-wait
 		nil,                  // arguments
 	)
-	failOnError(err, "Failed to declare an exchange")
+	if err != nil {
+		logger.Error("failed to declare an exchange", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	// TODO: read arguments from global config
 	q, err := ch.QueueDeclare(
@@ -193,7 +202,10 @@ func main() {
 		false,           // no-wait
 		nil,             // arguments
 	)
-	failOnError(err, "Failed to declare a queue")
+	if err != nil {
+		logger.Error("failed to declare a queue", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	msgs, err := ch.Consume(
 		q.Name, // queue
@@ -204,7 +216,10 @@ func main() {
 		false,  // no-wait
 		nil,    // args
 	)
-	failOnError(err, "Failed to register a consumer")
+	if err != nil {
+		logger.Error("failed to register a consumer", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	forever := make(chan struct{})
 
@@ -213,12 +228,15 @@ func main() {
 
 	go func() {
 		for d := range msgs {
+			msgLogger := logger.With("correlation_id", d.CorrelationId)
+			msgLogger.Debug("Received a message", slog.String("body", string(d.Body)))
+
 			if err = h.handle(&d, ch); err != nil {
-				log.Printf("failed to handle message: %v", err)
+				msgLogger.Error("failed to handle message", slog.Any("error", err))
 			}
 		}
 	}()
 
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	logger.Debug("[*] Waiting for messages. To exit press CTRL+C")
 	<-forever
 }

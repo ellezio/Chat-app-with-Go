@@ -269,7 +269,7 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) error {
 	}
 	defer file.Close()
 
-	savedFilename, err := h.fileUploader.Upload(fileHeader.Filename, file)
+	savedFilename, err := h.fileUploader.Upload(r.Context(), fileHeader.Filename, file)
 	if err != nil {
 		return errors.Join(errors.New("can't upload file"), err)
 	}

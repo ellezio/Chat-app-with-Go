@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
+
+	"github.com/ellezio/Chat-app-with-Go/internal/log"
 )
 
 // TODO:
@@ -19,7 +22,7 @@ type FileUploader struct {
 // Upload sends a file to the file server.
 //
 // Returns the uploaded file's name
-func (fu *FileUploader) Upload(fname string, file io.Reader) (string, error) {
+func (fu *FileUploader) Upload(ctx context.Context, fname string, file io.Reader) (string, error) {
 	body := &bytes.Buffer{}
 	wr := multipart.NewWriter(body)
 	fpartwr, err := wr.CreateFormFile("file", fname)
@@ -35,6 +38,7 @@ func (fu *FileUploader) Upload(fname string, file io.Reader) (string, error) {
 
 	req, err := http.NewRequest("POST", "http://localhost:3001", body)
 	req.Header.Add("Content-Type", wr.FormDataContentType())
+	req.Header.Add(log.CorrelationIdHeader, log.CorrelationIdCtx(ctx))
 	client := http.Client{}
 	res, err := client.Do(req)
 	if err != nil {
