@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
+	"net/url"
+	"time"
 
 	"github.com/ellezio/Chat-app-with-Go/internal/log"
 )
@@ -17,6 +21,17 @@ import (
 // - tls
 // - try also HTTP/2, gRPC
 type FileUploader struct {
+	host, port string
+	client     *http.Client
+}
+
+func NewFileUploader(host, port string) *FileUploader {
+	client := &http.Client{
+		Transport: http.DefaultTransport,
+		Timeout:   60 * time.Second,
+	}
+
+	return &FileUploader{host, port, client}
 }
 
 // Upload sends a file to the file server.
@@ -24,9 +39,11 @@ type FileUploader struct {
 // Returns the uploaded file's name
 func (fu *FileUploader) Upload(ctx context.Context, fname string, file io.Reader) (string, error) {
 	body := &bytes.Buffer{}
+
 	wr := multipart.NewWriter(body)
 	fpartwr, err := wr.CreateFormFile("file", fname)
 	if err != nil {
+		wr.Close()
 		return "", errors.Join(errors.New("can't create form file"), err)
 	}
 	_, err = io.Copy(fpartwr, file)
@@ -36,15 +53,27 @@ func (fu *FileUploader) Upload(ctx context.Context, fname string, file io.Reader
 	}
 	wr.Close()
 
-	req, err := http.NewRequest("POST", "http://localhost:3001", body)
-	req.Header.Add("Content-Type", wr.FormDataContentType())
-	req.Header.Add(log.CorrelationIdHeader, log.CorrelationIdCtx(ctx))
-	client := http.Client{}
-	res, err := client.Do(req)
+	url := url.URL{Scheme: "http", Host: net.JoinHostPort(fu.host, fu.port)}
+	req, err := http.NewRequestWithContext(ctx, "POST", url.String(), body)
+	if err != nil {
+		return "", errors.Join(errors.New("failed to create request"), err)
+	}
+
+	if cid := log.CorrelationIdCtx(ctx); cid != "" {
+		req.Header.Set(log.CorrelationIdHeader, cid)
+	}
+
+	req.Header.Set("Content-Type", wr.FormDataContentType())
+
+	res, err := fu.client.Do(req)
 	if err != nil {
 		return "", errors.Join(errors.New("error while sending request"), err)
 	}
 	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("unexpected status %d", res.StatusCode)
+	}
 
 	savedFilename, err := io.ReadAll(res.Body)
 	if err != nil {

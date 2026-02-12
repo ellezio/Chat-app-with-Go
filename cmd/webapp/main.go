@@ -121,6 +121,8 @@ func main() {
 
 	host := flag.String("host", "", "")
 	port := flag.String("port", "3000", "")
+	fileHost := flag.String("file-host", "localhost", "file server host")
+	fielPort := flag.String("file-port", "3001", "file server port")
 	flag.Parse()
 
 	cfg := readConfig()
@@ -131,7 +133,8 @@ func main() {
 	}
 	sto := &store.MongodbStore{}
 
-	chatHandler, hub := newChatHandler(sto)
+	fileUploader := NewFileUploader(*fileHost, *fielPort)
+	chatHandler, hub := newChatHandler(sto, fileUploader)
 	err = hub.Start(cfg.RabbitMQ)
 	if err != nil {
 		panic(err)

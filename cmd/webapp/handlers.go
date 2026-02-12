@@ -25,15 +25,16 @@ import (
 
 type ChatHandler struct {
 	upgrader     websocket.Upgrader
-	fileUploader FileUploader
+	fileUploader *FileUploader
 	hub          *internal.Hub
 	store        internal.Store
 }
 
-func newChatHandler(store internal.Store) (*ChatHandler, *internal.Hub) {
+func newChatHandler(store internal.Store, fileUploader *FileUploader) (*ChatHandler, *internal.Hub) {
 	h := &ChatHandler{
-		hub:   internal.NewHub(store),
-		store: store,
+		hub:          internal.NewHub(store),
+		store:        store,
+		fileUploader: fileUploader,
 	}
 
 	return h, h.hub
@@ -172,10 +173,6 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) error {
 	logger.Debug("Client connected", slog.String("name", sesh.User.Name))
 
 	if _, _, err = h.hub.ConnectClient("", client); err != nil {
-		// NOTE:
-		// this is example of problem with error handling with middleware when we want to log additional info to error.
-		// Either we can return some error struct/map or just two logs in same context
-		// I will go with two logs, it's easy to track due to trace id.
 		logger.Error("Can't connect client", slog.Any("client", client))
 		return err
 	}
