@@ -72,7 +72,8 @@ func (fu *FileUploader) Upload(ctx context.Context, fname string, file io.Reader
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("unexpected status %d", res.StatusCode)
+		body, _ := io.ReadAll(res.Body)
+		return "", fmt.Errorf("unexpected status %d with body %s", res.StatusCode, body)
 	}
 
 	savedFilename, err := io.ReadAll(res.Body)

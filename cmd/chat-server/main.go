@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"github.com/ellezio/Chat-app-with-Go/internal"
 	"github.com/ellezio/Chat-app-with-Go/internal/config"
 	"github.com/ellezio/Chat-app-with-Go/internal/log"
+	"github.com/ellezio/Chat-app-with-Go/internal/rabbitmq"
 	"github.com/ellezio/Chat-app-with-Go/internal/store"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -38,7 +40,7 @@ func assertAndCall[T any](eventName string, fn func(evt internal.ChatEvent, arg 
 	return fn(evt, a)
 }
 
-func (h *handler) handle(d *amqp.Delivery, ch *amqp.Channel) error {
+func (h *handler) handle(d *amqp.Delivery, pub *rabbitmq.Publisher) error {
 	var event internal.ChatEvent
 	err := event.UnmarshalJSON(d.Body)
 	if err != nil {
@@ -75,7 +77,7 @@ func (h *handler) handle(d *amqp.Delivery, ch *amqp.Channel) error {
 
 	if broadcastDetails != nil {
 		event.Details = broadcastDetails
-		err = h.broadcast(d, ch, event)
+		err = h.broadcast(d, pub, event)
 	}
 
 	d.Ack(false)
@@ -121,18 +123,16 @@ func (h *handler) newChat(evt internal.ChatEvent, details *internal.Chat) (any, 
 	return details, nil
 }
 
-func (h *handler) broadcast(d *amqp.Delivery, ch *amqp.Channel, event internal.ChatEvent) error {
+func (h *handler) broadcast(d *amqp.Delivery, pub *rabbitmq.Publisher, event internal.ChatEvent) error {
 	body, err := json.Marshal(event)
 	if err != nil {
 		d.Ack(false)
 		return fmt.Errorf("Failed to broadcast message: %v", err)
 	}
 
-	err = ch.Publish(
+	err = pub.Publish(
 		"chat_notifications", // exchange
 		"",                   // routing key
-		false,                // mandatory
-		false,                // immediate
 		amqp.Publishing{
 			ContentType: "text/plain",
 			Body:        body,
@@ -149,94 +149,62 @@ func main() {
 	b, err := os.ReadFile("config.json")
 	if err != nil {
 		logger.Error("failed to read config file", slog.Any("error", err))
-		os.Exit(1)
+		return
 	}
 
 	var cfg config.Configuration
 	err = json.Unmarshal(b, &cfg)
 	if err != nil {
 		logger.Error("failed to laod config", slog.Any("error", err))
-		os.Exit(1)
+		return
 	}
 
 	err = store.InitConn(cfg.MongoDB, cfg.Redis)
 	if err != nil {
 		logger.Error("failed to establish store connection", slog.Any("error", err))
-		os.Exit(1)
+		return
 	}
 
-	conn, err := amqp.Dial(cfg.RabbitMQ.ConnectionString)
+	client, err := rabbitmq.Dial(context.Background(), cfg.RabbitMQ.ConnectionString)
 	if err != nil {
 		logger.Error("failed to connect to RabbitMQ", slog.Any("error", err))
-		os.Exit(1)
+		return
 	}
-	defer conn.Close()
+	defer client.Close()
 
-	ch, err := conn.Channel()
-	if err != nil {
-		logger.Error("failed to open a channel", slog.Any("error", err))
-		os.Exit(1)
-	}
-	defer ch.Close()
-
-	err = ch.ExchangeDeclare(
-		"chat_notifications", // name
-		"fanout",             // type
-		true,                 // durable
-		false,                // auto-deleted
-		false,                // internal
-		false,                // no-wait
-		nil,                  // arguments
+	publisher, err := client.NewPublisher(
+		context.Background(),
+		[]rabbitmq.Exchange{{
+			Name:    "chat_notifications",
+			Kind:    "fanout",
+			Durable: true,
+		}},
 	)
 	if err != nil {
-		logger.Error("failed to declare an exchange", slog.Any("error", err))
-		os.Exit(1)
+		logger.Error("creating publisher: %w", err)
+		return
 	}
-
-	// TODO: read arguments from global config
-	q, err := ch.QueueDeclare(
-		"chat_messages", // name
-		true,            // durable
-		false,           // delete when unused
-		false,           // exclusive
-		false,           // no-wait
-		nil,             // arguments
-	)
-	if err != nil {
-		logger.Error("failed to declare a queue", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	msgs, err := ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		false,  // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
-	)
-	if err != nil {
-		logger.Error("failed to register a consumer", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	forever := make(chan struct{})
 
 	dbstore := store.MongodbStore{}
 	h := handler{store: &dbstore, chats: make(map[string]*chat), mu: sync.Mutex{}}
+	consume := func(d amqp.Delivery) {
+		msgLogger := logger.With("correlation_id", d.CorrelationId)
+		msgLogger.Debug("Received a message", slog.String("body", string(d.Body)))
 
-	go func() {
-		for d := range msgs {
-			msgLogger := logger.With("correlation_id", d.CorrelationId)
-			msgLogger.Debug("Received a message", slog.String("body", string(d.Body)))
-
-			if err = h.handle(&d, ch); err != nil {
-				msgLogger.Error("failed to handle message", slog.Any("error", err))
-			}
+		if err = h.handle(&d, publisher); err != nil {
+			msgLogger.Error("failed to handle message", slog.Any("error", err))
 		}
-	}()
+	}
 
+	client.RegisterConsumer(
+		context.Background(),
+		&rabbitmq.Queue{Name: "chat_messages", Durable: true},
+		"",
+		nil,
+		rabbitmq.Consumer{Consume: consume},
+	)
+
+	forever := make(chan struct{})
 	logger.Debug("[*] Waiting for messages. To exit press CTRL+C")
 	<-forever
 }

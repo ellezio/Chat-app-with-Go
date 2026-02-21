@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,8 +55,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mime := http.DetectContentType(buf)
-	if mime != "image/jpeg" {
-		http.Error(w, "invalid file type - only jpeg supported", http.StatusBadRequest)
+	mimeParts := strings.SplitN(mime, "/", 2)
+	if len(mimeParts) != 2 || mimeParts[0] == "image/" {
+		http.Error(w, "invalid content type - only image/* are supported", http.StatusBadRequest)
 		return
 	}
 
@@ -64,7 +66,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		r.MultipartForm.RemoveAll()
 	}()
 
-	filename := generateFilename() + ".jpeg"
+	filename := generateFilename() + "." + mimeParts[1]
 	filepath := path.Join(cfg.dir, filename)
 	dst, err := os.Create(filepath)
 	if err != nil {

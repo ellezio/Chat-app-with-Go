@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -268,7 +269,7 @@ func (h *ChatHandler) UploadFile(w http.ResponseWriter, r *http.Request) error {
 
 	savedFilename, err := h.fileUploader.Upload(r.Context(), fileHeader.Filename, file)
 	if err != nil {
-		return errors.Join(errors.New("can't upload file"), err)
+		return fmt.Errorf("can't upload file: %w", err)
 	}
 
 	msg := internal.New(

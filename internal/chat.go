@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ellezio/Chat-app-with-Go/internal/config"
+	"github.com/ellezio/Chat-app-with-Go/internal/rabbitmq"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
@@ -371,8 +373,8 @@ type Hub struct {
 	chats      map[string]*Chat
 	chatsMutex sync.Mutex
 
-	amqpConn *amqp.Connection
-	amqpChan *amqp.Channel
+	rabbitmqClient   *rabbitmq.Client
+	messagePublisher *rabbitmq.Publisher
 }
 
 func NewHub(store Store) *Hub {
@@ -392,153 +394,99 @@ func NewHub(store Store) *Hub {
 	return h
 }
 
-func (self *Hub) Start(cfg config.RabbitMQ) error {
-	conn, err := amqp.Dial(cfg.ConnectionString)
+func (h *Hub) Start(cfg config.RabbitMQ) error {
+	var err error
+	h.rabbitmqClient, err = rabbitmq.Dial(context.Background(), cfg.ConnectionString)
 	if err != nil {
-		return fmt.Errorf("Failed to connect to RabbitMQ")
+		return fmt.Errorf("hub start: %w", err)
 	}
 
-	ch, err := conn.Channel()
-	if err != nil {
-		return fmt.Errorf("Failed to open a channel")
-	}
-
-	_, err = ch.QueueDeclare(
-		"chat_messages", // name
-		true,            // durable
-		false,           // delete when unused
-		false,           // exclusive
-		false,           // no-wait
-		nil,             // arguments
+	err = h.rabbitmqClient.RegisterConsumer(
+		context.Background(),
+		&rabbitmq.Queue{Exclusive: true},
+		"",
+		&rabbitmq.Exchange{Name: "chat_notifications", Kind: "fanout", Durable: true},
+		rabbitmq.Consumer{AutoAck: true, Consume: h.processRabbitmqMessage},
 	)
 	if err != nil {
-		return fmt.Errorf("Failed to declare a queue")
+		return fmt.Errorf("failed to create consumer: %w", err)
 	}
 
-	err = ch.ExchangeDeclare(
-		"chat_notifications", // name
-		"fanout",             // type
-		true,                 // durable
-		false,                // auto-deleted
-		false,                // internal
-		false,                // no-wait
-		nil,                  // arguments
-	)
+	h.messagePublisher, err = h.rabbitmqClient.NewPublisher(context.Background(), nil)
 	if err != nil {
-		return fmt.Errorf("Failed to declare an exchange")
+		return fmt.Errorf("failed to create publihser: %w", err)
 	}
 
-	q, err := ch.QueueDeclare(
-		"",    // name
-		false, // durable
-		false, // delete when unused
-		true,  // exclusive
-		false, // no-wait
-		nil,   // arguments
-	)
-	if err != nil {
-		return fmt.Errorf("Failed to declare a queue")
+	return nil
+}
+
+func (self *Hub) processRabbitmqMessage(msg amqp.Delivery) {
+	log.Printf(" [x] %s", msg.Body)
+	var event ChatEvent
+
+	var temp struct {
+		Type    EventType       `json:"type"`
+		ChatId  string          `json:"chatId"`
+		UserId  string          `json:"userId"`
+		Details json.RawMessage `json:"details"`
 	}
 
-	err = ch.QueueBind(
-		q.Name,               // queue name
-		"",                   // routing key
-		"chat_notifications", // exchange
-		false,
-		nil,
-	)
-	if err != nil {
-		return fmt.Errorf("Failed to bind a queue")
+	if err := json.Unmarshal(msg.Body, &temp); err != nil {
+		log.Printf("Failed to parsed delivery message: %v", err)
+		return
 	}
 
-	msgs, err := ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
-	)
-	if err != nil {
-		return fmt.Errorf("Failed to register a consumer")
-	}
+	event.Type = temp.Type
+	event.ChatId = temp.ChatId
+	event.UserId = temp.UserId
 
-	go func() {
-		for d := range msgs {
-			log.Printf(" [x] %s", d.Body)
-			var event ChatEvent
-
-			var temp struct {
-				Type    EventType       `json:"type"`
-				ChatId  string          `json:"chatId"`
-				UserId  string          `json:"userId"`
-				Details json.RawMessage `json:"details"`
-			}
-
-			if err := json.Unmarshal(d.Body, &temp); err != nil {
-				log.Printf("Failed to parsed delivery message: %v", err)
-				continue
-			}
-
-			event.Type = temp.Type
-			event.ChatId = temp.ChatId
-			event.UserId = temp.UserId
-
-			switch event.Type {
-			case Event_NewChat:
-				var cht *Chat
-				if err = json.Unmarshal(temp.Details, &cht); err != nil {
-					log.Printf("Cannot process entity with type \"%T\" while adding chat", event.Details)
-					continue
-				}
-
-				cht.publishEvent = self.PublishEvent
-				cht.store = self.store
-				cht.connectedClients = make(map[string]Client)
-				cht.disconnectedClients = make(map[string]Client)
-
-				self.chatsMutex.Lock()
-				self.chats[cht.Id] = cht
-				self.chatsMutex.Unlock()
-
-				evtData := EventData{
-					Cht: cht,
-				}
-
-				self.clientMetasMutex.Lock()
-				for _, cliMeta := range self.clientMetas {
-					cliMeta.Client.HandleEvent(Event_NewChat, evtData)
-				}
-				self.clientMetasMutex.Unlock()
-			default:
-				cht := self.GetChat(event.ChatId)
-				if cht == nil {
-					log.Printf("Chat id: %q, no clients in this hub, ignoring message", event.ChatId)
-					return
-				}
-
-				var msg Message
-				if err = json.Unmarshal(temp.Details, &msg); err != nil {
-					log.Printf("Cannot process entity with type \"%T\" while broadcasting message", event.Details)
-					continue
-				}
-
-				evt := EventData{
-					Msg:      &msg,
-					SenderId: event.UserId,
-					Cht:      cht,
-				}
-
-				cht.Broadcast(event.Type, evt)
-			}
+	switch event.Type {
+	case Event_NewChat:
+		var cht *Chat
+		if err := json.Unmarshal(temp.Details, &cht); err != nil {
+			log.Printf("Cannot process entity with type \"%T\" while adding chat", event.Details)
+			return
 		}
-	}()
 
-	self.amqpConn = conn
-	self.amqpChan = ch
+		cht.publishEvent = self.PublishEvent
+		cht.store = self.store
+		cht.connectedClients = make(map[string]Client)
+		cht.disconnectedClients = make(map[string]Client)
 
-	return err
+		self.chatsMutex.Lock()
+		self.chats[cht.Id] = cht
+		self.chatsMutex.Unlock()
+
+		evtData := EventData{
+			Cht: cht,
+		}
+
+		self.clientMetasMutex.Lock()
+		for _, cliMeta := range self.clientMetas {
+			cliMeta.Client.HandleEvent(Event_NewChat, evtData)
+		}
+		self.clientMetasMutex.Unlock()
+	default:
+		cht := self.GetChat(event.ChatId)
+		if cht == nil {
+			log.Printf("Chat id: %q, no clients in this hub, ignoring message", event.ChatId)
+			return // return error to close connection
+		}
+
+		var msg Message
+		if err := json.Unmarshal(temp.Details, &msg); err != nil {
+			log.Printf("Cannot process entity with type \"%T\" while broadcasting message", event.Details)
+			return
+		}
+
+		evt := EventData{
+			Msg:      &msg,
+			SenderId: event.UserId,
+			Cht:      cht,
+		}
+
+		cht.Broadcast(event.Type, evt)
+	}
 }
 
 func (self *Hub) LoadChatsFromStore() error {
@@ -567,16 +515,7 @@ func (self *Hub) PublishEvent(event ChatEvent) error {
 		return fmt.Errorf("Failed to send publish message: %v", err)
 	}
 
-	err = self.amqpChan.Publish(
-		"",              // exchange
-		"chat_messages", // routing key
-		false,           // mandatory
-		false,           // immediate
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        body,
-		})
-
+	err = self.messagePublisher.Publish("", "chat_messages", amqp.Publishing{ContentType: "text/plain", Body: body})
 	if err != nil {
 		return fmt.Errorf("Failed to send publish message: %v", err)
 	}
