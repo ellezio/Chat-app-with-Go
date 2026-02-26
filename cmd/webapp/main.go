@@ -127,11 +127,12 @@ func main() {
 
 	cfg := readConfig()
 
-	err := store.InitConn(cfg.MongoDB, cfg.Redis)
+	cache := store.NewRedisStore(cfg.Redis)
+	sto := store.NewMongodbStore(cfg.MongoDB, cache)
+	err := sto.Connect()
 	if err != nil {
 		panic(err)
 	}
-	sto := &store.MongodbStore{}
 
 	fileUploader := NewFileUploader(*fileHost, *fielPort)
 	chatHandler, hub := newChatHandler(sto, fileUploader)

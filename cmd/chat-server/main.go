@@ -159,7 +159,9 @@ func main() {
 		return
 	}
 
-	err = store.InitConn(cfg.MongoDB, cfg.Redis)
+	cache := store.NewRedisStore(cfg.Redis)
+	sto := store.NewMongodbStore(cfg.MongoDB, cache)
+	err = sto.Connect()
 	if err != nil {
 		logger.Error("failed to establish store connection", slog.Any("error", err))
 		return
@@ -181,7 +183,7 @@ func main() {
 		}},
 	)
 	if err != nil {
-		logger.Error("creating publisher: %w", err)
+		logger.Error("creating publisher: %w", slog.Any("error", err))
 		return
 	}
 

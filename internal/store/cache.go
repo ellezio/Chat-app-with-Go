@@ -60,38 +60,41 @@ but downside of it is more redis operation to perform
 
 */
 
-var cache *redis.Client
-
-func initCacheConnection(c config.Redis) {
-	cache = redis.NewClient(&redis.Options{
-		Addr:     c.Addr,
-		Password: c.Pass,
-		DB:       c.DB,
-	})
+type RedisStore struct {
+	client *redis.Client
 }
 
-func cacheInsertMessage(msg *internal.Message) {
+func NewRedisStore(cfg config.Redis) *RedisStore {
+	client := redis.NewClient(&redis.Options{
+		Addr:     cfg.Addr,
+		Password: cfg.Pass,
+		DB:       cfg.DB,
+	})
+	return &RedisStore{client: client}
+}
+
+func (rs *RedisStore) InsertMessage(msg *internal.Message) {
 	k := "chat:" + msg.ChatId.Hex() + ":messages"
-	r, err := cache.RPushX(context.Background(), k, msg).Result()
+	r, err := rs.client.RPushX(context.Background(), k, msg).Result()
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
 	if r > 0 {
-		cache.LTrim(context.Background(), k, 0, 99)
+		rs.client.LTrim(context.Background(), k, 0, 99)
 	}
 }
 
-func cacheUpdateMessage(msg *internal.Message) {
+func (rs *RedisStore) UpdateMessage(msg *internal.Message) {
 	k := "chat:" + msg.ChatId.Hex() + ":messages"
-	cache.Del(context.Background(), k)
+	rs.client.Del(context.Background(), k)
 }
 
-func cacheGetMessages(chatId string) []*internal.Message {
+func (rs *RedisStore) GetMessages(chatId string) []*internal.Message {
 	k := "chat:" + chatId + ":messages"
 	msgs := make([]*internal.Message, 0, 100)
-	err := cache.LRange(context.Background(), k, 0, 99).ScanSlice(&msgs)
+	err := rs.client.LRange(context.Background(), k, 0, 99).ScanSlice(&msgs)
 	if err != nil {
 		log.Println(err)
 		return nil
@@ -100,29 +103,29 @@ func cacheGetMessages(chatId string) []*internal.Message {
 	return msgs
 }
 
-func cachePopulateMessages(chatId string, msgs []*internal.Message) {
+func (rs *RedisStore) PopulateMessages(chatId string, msgs []*internal.Message) {
 	k := "chat:" + chatId + ":messages"
 	var items []any
 	for _, msg := range msgs {
 		items = append(items, msg)
 	}
 
-	err := cache.RPush(context.Background(), k, items...).Err()
+	err := rs.client.RPush(context.Background(), k, items...).Err()
 	if err != nil {
 		log.Println(err)
 		return
 	}
 }
 
-func cacheInsertUser(user *internal.User) {
+func (rs *RedisStore) InsertUser(user *internal.User) {
 	k := "user:" + user.Id.Hex()
-	cache.Set(context.Background(), k, user, time.Hour)
+	rs.client.Set(context.Background(), k, user, time.Hour)
 }
 
-func cacheGetUser(userId string) *internal.User {
+func (rs *RedisStore) GetUser(userId string) *internal.User {
 	k := "user:" + userId
 	var user internal.User
-	if err := cache.Get(context.Background(), k).Scan(&user); err != nil {
+	if err := rs.client.Get(context.Background(), k).Scan(&user); err != nil {
 		return nil
 	}
 

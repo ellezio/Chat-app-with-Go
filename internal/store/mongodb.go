@@ -71,44 +71,75 @@ func (m *Message) toInternal(user internal.User) *internal.Message {
 	}
 }
 
-var client *mongo.Client
+type MongodbStore struct {
+	cfg    config.MongoDB
+	client *mongo.Client
+	cache  *RedisStore
+}
 
-func InitConn(dbConfig config.MongoDB, cacheConfig config.Redis) error {
+func NewMongodbStore(cfg config.MongoDB, cache *RedisStore) *MongodbStore {
+	return &MongodbStore{cfg: cfg, cache: cache}
+}
+
+func (ms *MongodbStore) Connect() error {
+	if ms.client != nil {
+		err := ms.client.Ping(context.Background(), nil)
+		if err == nil {
+			return nil
+		}
+
+		ms.Disconnect()
+	}
+
 	var err error
-
-	opts := options.Client().ApplyURI(dbConfig.ConnectionString)
-	client, err = mongo.Connect(opts)
-
-	initCacheConnection(cacheConfig)
-
+	opts := options.Client().ApplyURI(ms.cfg.ConnectionString)
+	ms.client, err = mongo.Connect(opts)
 	return err
 }
 
-type MongodbStore struct{}
+func (ms *MongodbStore) Disconnect() error {
+	if ms.client == nil {
+		return nil
+	}
 
-func (self *MongodbStore) getDatabase() *mongo.Database {
-	return client.Database("chatApp")
+	err := ms.client.Disconnect(context.Background())
+	ms.client = nil
+	return err
 }
 
-func (self *MongodbStore) getMessagesCollection() *mongo.Collection {
-	return self.getDatabase().Collection("messages")
+func (ms *MongodbStore) getDatabase() (*mongo.Database, error) {
+	if ms.client == nil {
+		return nil, errors.New("MongoDB client not connected")
+	}
+
+	return ms.client.Database("chatApp"), nil
 }
 
-func (self *MongodbStore) getChatsCollection() *mongo.Collection {
-	return self.getDatabase().Collection("chats")
+func (ms *MongodbStore) getMessagesCollection() (*mongo.Collection, error) {
+	db, err := ms.getDatabase()
+	return db.Collection("messages"), err
 }
 
-func (ms *MongodbStore) getUsersCollection() *mongo.Collection {
-	return ms.getDatabase().Collection("users")
+func (ms *MongodbStore) getChatsCollection() (*mongo.Collection, error) {
+	db, err := ms.getDatabase()
+	return db.Collection("chats"), err
 }
 
-func (self *MongodbStore) SetHideMessage(id string, userId string, value bool) (*internal.Message, error) {
+func (ms *MongodbStore) getUsersCollection() (*mongo.Collection, error) {
+	db, err := ms.getDatabase()
+	return db.Collection("users"), err
+}
+
+func (ms *MongodbStore) SetHideMessage(id string, userId string, value bool) (*internal.Message, error) {
+	coll, err := ms.getMessagesCollection()
+	if err != nil {
+		return nil, err
+	}
+
 	msgId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errors.Join(ErrParseId, err)
 	}
-
-	coll := self.getMessagesCollection()
 
 	var operation string
 	if value {
@@ -131,25 +162,28 @@ func (self *MongodbStore) SetHideMessage(id string, userId string, value bool) (
 		return nil, errors.Join(ErrDecodeMessage, err)
 	}
 
-	user, err := self.GetUserById(result.AuthorId.Hex())
+	user, err := ms.GetUserById(result.AuthorId.Hex())
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to attache author to message"), err)
 	}
 
 	rmsg := result.toInternal(*user)
 
-	cacheUpdateMessage(rmsg)
+	ms.cache.UpdateMessage(rmsg)
 
 	return rmsg, nil
 }
 
-func (self *MongodbStore) DeleteMessage(id string) (*internal.Message, error) {
+func (ms *MongodbStore) DeleteMessage(id string) (*internal.Message, error) {
+	coll, err := ms.getMessagesCollection()
+	if err != nil {
+		return nil, err
+	}
+
 	msgId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errors.Join(ErrParseId, err)
 	}
-
-	coll := self.getMessagesCollection()
 
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 	res := coll.FindOneAndUpdate(
@@ -165,25 +199,28 @@ func (self *MongodbStore) DeleteMessage(id string) (*internal.Message, error) {
 		return nil, errors.Join(ErrDecodeMessage, err)
 	}
 
-	user, err := self.GetUserById(result.AuthorId.Hex())
+	user, err := ms.GetUserById(result.AuthorId.Hex())
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to attache author to message"), err)
 	}
 
 	rmsg := result.toInternal(*user)
 
-	cacheUpdateMessage(rmsg)
+	ms.cache.UpdateMessage(rmsg)
 
 	return rmsg, nil
 }
 
-func (self *MongodbStore) GetMessage(msgId string) (*internal.Message, error) {
+func (ms *MongodbStore) GetMessage(msgId string) (*internal.Message, error) {
+	coll, err := ms.getMessagesCollection()
+	if err != nil {
+		return nil, err
+	}
+
 	id, err := bson.ObjectIDFromHex(msgId)
 	if err != nil {
 		return nil, errors.Join(ErrParseId, err)
 	}
-
-	coll := self.getMessagesCollection()
 
 	var result []struct {
 		Message `bson:",inline"`
@@ -212,8 +249,13 @@ func (self *MongodbStore) GetMessage(msgId string) (*internal.Message, error) {
 	return rmsg, nil
 }
 
-func (self *MongodbStore) GetMessages(chatId string) ([]*internal.Message, error) {
-	msgs := cacheGetMessages(chatId)
+func (ms *MongodbStore) GetMessages(chatId string) ([]*internal.Message, error) {
+	coll, err := ms.getMessagesCollection()
+	if err != nil {
+		return nil, err
+	}
+
+	msgs := ms.cache.GetMessages(chatId)
 	if len(msgs) > 0 {
 		log.Println("CACHE HIT - get messages")
 		return msgs, nil
@@ -223,8 +265,6 @@ func (self *MongodbStore) GetMessages(chatId string) ([]*internal.Message, error
 	if err != nil {
 		return nil, errors.Join(ErrParseId, err)
 	}
-
-	coll := self.getMessagesCollection()
 
 	var results []struct {
 		Message `bson:",inline"`
@@ -258,13 +298,18 @@ func (self *MongodbStore) GetMessages(chatId string) ([]*internal.Message, error
 		rmsgs = append(rmsgs, rmsg)
 	}
 
-	cachePopulateMessages(chatId, rmsgs)
+	ms.cache.PopulateMessages(chatId, rmsgs)
 
 	return rmsgs, nil
 }
 
-func (self *MongodbStore) SaveMessage(m *internal.Message) error {
-	user, err := self.GetUserById(m.AuthorId)
+func (ms *MongodbStore) SaveMessage(m *internal.Message) error {
+	coll, err := ms.getMessagesCollection()
+	if err != nil {
+		return err
+	}
+
+	user, err := ms.GetUserById(m.AuthorId)
 	if err != nil {
 		return errors.Join(errors.New("failed to get user for message"), err)
 	}
@@ -274,7 +319,6 @@ func (self *MongodbStore) SaveMessage(m *internal.Message) error {
 	msg.fromInternal(m)
 
 	if msg.Id == bson.NilObjectID {
-		coll := self.getMessagesCollection()
 
 		res, err := coll.InsertOne(
 			context.TODO(),
@@ -287,12 +331,11 @@ func (self *MongodbStore) SaveMessage(m *internal.Message) error {
 
 		if id, ok := res.InsertedID.(bson.ObjectID); ok {
 			m.Id = id
-			cacheInsertMessage(m)
+			ms.cache.InsertMessage(m)
 		} else {
 			return errors.New("failed to read inserted message id")
 		}
 	} else {
-		coll := self.getMessagesCollection()
 
 		res, err := coll.UpdateByID(
 			context.TODO(),
@@ -308,19 +351,22 @@ func (self *MongodbStore) SaveMessage(m *internal.Message) error {
 			return errors.New("update 0 messages")
 		}
 
-		cacheUpdateMessage(m)
+		ms.cache.UpdateMessage(m)
 	}
 
 	return nil
 }
 
-func (self *MongodbStore) UpdateMessageContent(id string, content string) (*internal.Message, error) {
+func (ms *MongodbStore) UpdateMessageContent(id string, content string) (*internal.Message, error) {
+	coll, err := ms.getMessagesCollection()
+	if err != nil {
+		return nil, err
+	}
+
 	msgId, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errors.Join(ErrParseId, err)
 	}
-
-	coll := self.getMessagesCollection()
 
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 	res := coll.FindOneAndUpdate(
@@ -336,21 +382,24 @@ func (self *MongodbStore) UpdateMessageContent(id string, content string) (*inte
 		return nil, errors.Join(ErrDecodeMessage, err)
 	}
 
-	user, err := self.GetUserById(result.AuthorId.Hex())
+	user, err := ms.GetUserById(result.AuthorId.Hex())
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to attache author to message"), err)
 	}
 
 	rmsg := result.toInternal(*user)
 
-	cacheUpdateMessage(rmsg)
+	ms.cache.UpdateMessage(rmsg)
 
 	return rmsg, nil
 }
 
 // TODO: update on saving existing chat
-func (self *MongodbStore) SaveChat(cht *internal.Chat) error {
-	coll := self.getChatsCollection()
+func (ms *MongodbStore) SaveChat(cht *internal.Chat) error {
+	coll, err := ms.getChatsCollection()
+	if err != nil {
+		return err
+	}
 
 	res, err := coll.InsertOne(context.TODO(), Chat{Name: cht.Name})
 	if err != nil {
@@ -366,8 +415,11 @@ func (self *MongodbStore) SaveChat(cht *internal.Chat) error {
 	return nil
 }
 
-func (self *MongodbStore) GetChats() ([]*internal.Chat, error) {
-	coll := self.getChatsCollection()
+func (ms *MongodbStore) GetChats() ([]*internal.Chat, error) {
+	coll, err := ms.getChatsCollection()
+	if err != nil {
+		return nil, err
+	}
 
 	res, err := coll.Find(context.TODO(), bson.M{})
 	if err != nil {
@@ -382,7 +434,7 @@ func (self *MongodbStore) GetChats() ([]*internal.Chat, error) {
 
 	var results []*internal.Chat
 	for _, cht := range chts {
-		result := internal.NewChat(cht.Name, self)
+		result := internal.NewChat(cht.Name, ms)
 		result.Id = cht.Id.Hex()
 		results = append(results, result)
 	}
@@ -391,7 +443,10 @@ func (self *MongodbStore) GetChats() ([]*internal.Chat, error) {
 }
 
 func (ms *MongodbStore) CreateUser(user *internal.User) error {
-	coll := ms.getUsersCollection()
+	coll, err := ms.getUsersCollection()
+	if err != nil {
+		return err
+	}
 
 	res, err := coll.InsertOne(context.TODO(), user)
 	if err != nil {
@@ -408,7 +463,10 @@ func (ms *MongodbStore) CreateUser(user *internal.User) error {
 }
 
 func (ms *MongodbStore) GetUser(name string) (*internal.User, error) {
-	coll := ms.getUsersCollection()
+	coll, err := ms.getUsersCollection()
+	if err != nil {
+		return nil, err
+	}
 
 	res := coll.FindOne(
 		context.TODO(),
@@ -429,18 +487,22 @@ func (ms *MongodbStore) GetUser(name string) (*internal.User, error) {
 }
 
 func (ms *MongodbStore) GetUserById(id string) (*internal.User, error) {
-	if user := cacheGetUser(id); user != nil {
+	if user := ms.cache.GetUser(id); user != nil {
 		log.Println("User cache - HIT")
 		return user, nil
 	}
 	log.Println("User cache - MISS")
+
+	coll, err := ms.getUsersCollection()
+	if err != nil {
+		return nil, err
+	}
 
 	uid, err := bson.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errors.Join(errors.New("failed to parse user id"), err)
 	}
 
-	coll := ms.getUsersCollection()
 	res := coll.FindOne(
 		context.TODO(),
 		bson.M{"_id": uid},
@@ -451,7 +513,7 @@ func (ms *MongodbStore) GetUserById(id string) (*internal.User, error) {
 		return nil, errors.Join(fmt.Errorf("failed to get user with id \"%s\"", id), err)
 	}
 
-	cacheInsertUser(&user)
+	ms.cache.InsertUser(&user)
 
 	return &user, nil
 }
