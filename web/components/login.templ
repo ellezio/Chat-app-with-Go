@@ -18,51 +18,53 @@ templ header(title string) {
 	</head>
 }
 
-templ LoginPage() {
+templ AuthLayout(title string) {
 	<!DOCTYPE html>
 	<html lang="en">
-		@header("Chat login page")
-		<body class="bg-delta m-0 overflow-y-hidden h-screen">
-			<div class="flex justify-center items-center backdrop-blur-sm fixed left-0 top-0 w-screen h-screen">
-				<div class="bg-cyber-gray border-2 border-neon-pink rounded-md p-4 w-fit h-fit">
-					<form
-						id="login-form"
-						hx-post="/login"
-						hx-swap="none"
-					>
-						@inputField("username", false)
-						@inputField("password", true)
-						<div id="login-error-msg"></div>
-						<button type="submit" class="w-full animate-pulse-neon bg-slate-400 rounded-md content-center py-1 text-slate-700 font-bold mt-2">Login</button>
-						<a href="/register">Register</a>
-					</form>
+		@header(title)
+		<body class="bg-alpha m-0 overflow-y-hidden h-screen">
+			<div class="min-h-screen flex items-center justify-center p-4">
+				<div class="w-full max-w-md">
+					<div class="bg-beta rounded-2xl p-8 shadow-2xl border border-gamma">
+						<div class="text-center mb-8">
+							<h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">{ title }</h1>
+						</div>
+						{ children... }
+					</div>
 				</div>
 			</div>
 		</body>
 	</html>
 }
 
-templ RegisterPage() {
-	<!DOCTYPE html>
-	<html lang="en">
-		@header("Chat register page")
-		<body class="bg-delta m-0 overflow-y-hidden h-screen">
-			<div class="flex justify-center items-center backdrop-blur-sm fixed left-0 top-0 w-screen h-screen">
-				<div class="bg-cyber-gray border-2 border-neon-pink rounded-md p-4 w-fit h-fit">
-					<form
-						id="register-form"
-						hx-post="/register"
-						hx-swap="none"
-					>
-						@inputField("username", false)
-						@inputField("password", true)
-						<div id="register-error-msg"></div>
-						<button type="submit" class="w-full animate-pulse-neon bg-slate-400 rounded-md content-center py-1 text-slate-700 font-bold mt-2">Register</button>
-					</form>
-				</div>
+templ LoginPage() {
+	@AuthLayout("Login") {
+		<form id="login-form" hx-post="/login" hx-swap="none">
+			@inputField("username", false)
+			@inputField("password", true)
+			<div id="login-error-msg"></div>
+			<button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 mt-4 hover:shadow-lg hover:shadow-indigo-500/25">Sign In</button>
+			<div class="mt-6 text-center">
+				<span class="text-gray-400">Don't have an account? </span>
+				<a href="/register" class="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">Sign up</a>
 			</div>
-		</body>
-	</html>
+		</form>
+	}
+}
+
+templ RegisterPage() {
+	@AuthLayout("Create Account") {
+		<form id="register-form" hx-post="/register" hx-swap="none">
+			@inputField("username", false)
+			@inputField("password", true)
+			<div id="register-error-msg"></div>
+			<button type="submit" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 mt-4 hover:shadow-lg hover:shadow-indigo-500/25">Create Account</button>
+			<div class="mt-6 text-center">
+				<span class="text-gray-400">Already have an account? </span>
+				<a href="/login" class="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">Sign in</a>
+			</div>
+		</form>
+	}
 }
 
 var inputFieldInputHandler = templ.NewOnceHandle()
@@ -75,22 +77,22 @@ templ inputField(name string, pass bool) {
 			}
 		</script>
 	}
-	<div>
-		<label for={ name } class="font-semibold text-neon-blue">{ name }:</label>
+	<div class="mb-4">
+		<label for={ name } class="block text-sm font-medium text-gray-300 mb-2">{ name }</label>
 		<input
 			id={ name }
 			name={ name }
-			class="border-2 rounded-md border-slate-800 outline-none px-1 bg-slate-300"
+			class="w-full bg-gamma border border-gray-700 rounded-xl px-4 py-3 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+			required
 			autocomplete="off"
 			if pass {
 				type="password"
 			}
 		/>
-		<div id={ name + "-error-msg" }></div>
+		<div id={ name + "-error-msg" } class="mt-2"></div>
 		<script>
 		  (() => {
-			const parent = document.currentScript.closest('div');
-			const input = parent.querySelector('input[name]');
+			const input = document.getElementById("{{ name }}");
 			input.addEventListener('input', function() {
 			  clearError(input.name);
 			})
@@ -103,6 +105,6 @@ templ ErrorMsg(fieldId string, msg string) {
 	<div
 		hx-swap-oob="outerHTML"
 		id={ fieldId + `-error-msg` }
-		class="text-red-700 font-semibold mt-1"
+		class="text-red-400 text-sm mt-1"
 	>{ msg }</div>
 }

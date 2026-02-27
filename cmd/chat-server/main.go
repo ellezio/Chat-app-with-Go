@@ -187,8 +187,7 @@ func main() {
 		return
 	}
 
-	dbstore := store.MongodbStore{}
-	h := handler{store: &dbstore, chats: make(map[string]*chat), mu: sync.Mutex{}}
+	h := handler{store: sto, chats: make(map[string]*chat), mu: sync.Mutex{}}
 	consume := func(d amqp.Delivery) {
 		msgLogger := logger.With("correlation_id", d.CorrelationId)
 		msgLogger.Debug("Received a message", slog.String("body", string(d.Body)))

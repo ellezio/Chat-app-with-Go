@@ -117,17 +117,26 @@ func (ms *MongodbStore) getDatabase() (*mongo.Database, error) {
 
 func (ms *MongodbStore) getMessagesCollection() (*mongo.Collection, error) {
 	db, err := ms.getDatabase()
-	return db.Collection("messages"), err
+	if err != nil {
+		return nil, err
+	}
+	return db.Collection("messages"), nil
 }
 
 func (ms *MongodbStore) getChatsCollection() (*mongo.Collection, error) {
 	db, err := ms.getDatabase()
-	return db.Collection("chats"), err
+	if err != nil {
+		return nil, err
+	}
+	return db.Collection("chats"), nil
 }
 
 func (ms *MongodbStore) getUsersCollection() (*mongo.Collection, error) {
 	db, err := ms.getDatabase()
-	return db.Collection("users"), err
+	if err != nil {
+		return nil, err
+	}
+	return db.Collection("users"), nil
 }
 
 func (ms *MongodbStore) SetHideMessage(id string, userId string, value bool) (*internal.Message, error) {

@@ -12,11 +12,16 @@ templ ErrorPage(msg string) {
 		</script>
 			<title>Error</title>
 		</head>
-		<body class="bg-delta m-0 overflow-y-hidden h-screen">
-			<div class="flex justify-center items-center fixed left-0 top-0 w-screen h-screen">
-				<div class="bg-red-900 border-2 border-red-400 text-red-50 rounded-md p-4 w-fit h-fit">
-					<h2>Error occurred</h2>
-					<p>{ msg }</p>
+		<body class="bg-alpha m-0 overflow-y-hidden h-screen">
+			<div class="min-h-screen flex items-center justify-center p-4">
+				<div class="bg-beta border border-red-900/50 rounded-2xl p-8 shadow-2xl shadow-red-900/20 max-w-md w-full">
+					<div class="flex items-center justify-center w-16 h-16 rounded-full bg-red-900/30 mx-auto mb-6">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+						</svg>
+					</div>
+					<h2 class="text-2xl font-bold text-center text-gray-100 mb-2">Oops!</h2>
+					<p class="text-gray-400 text-center">{ msg }</p>
 				</div>
 			</div>
 		</body>
@@ -25,18 +30,24 @@ templ ErrorPage(msg string) {
 
 templ ErrorPopup(msg string) {
 	<div hx-swap-oob="beforeend:body">
-		<div class="flex justify-center items-center fixed left-0 top-0 w-screen h-screen backdrop-blur-sm z-40">
-			<div class=" bg-red-900 border-2 border-red-400 text-red-50 rounded-md p-4 w-fit h-fit z-50">
-				<h2>Error occurred</h2>
-				<p>{ msg }</p>
-				<script>
-				(() => {
-					const backdrop = document.currentScript.closest('div').parentNode;
-					backdrop.addEventListener('click', function() {
-						backdrop.remove();
-					})
-				})()
-			</script>
+		<div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+			<div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+			<div class="bg-beta border border-red-900/50 rounded-2xl p-8 shadow-2xl shadow-red-900/20 max-w-md w-full relative z-10">
+				<div class="flex items-center justify-center w-16 h-16 rounded-full bg-red-900/30 mx-auto mb-6">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+					</svg>
+				</div>
+				<h2 class="text-2xl font-bold text-center text-gray-100 mb-2">Oops!</h2>
+				<p class="text-gray-400 text-center">{ msg }</p>
+				<div class="mt-6 text-center">
+					<button 
+						class="px-6 py-2 bg-gamma hover:bg-gray-700 text-gray-200 rounded-lg transition-colors"
+						onclick="this.closest('[hx-swap-oob]')?.remove() || this.closest('.fixed')?.remove()"
+					>
+						Close
+					</button>
+				</div>
 			</div>
 		</div>
 	</div>

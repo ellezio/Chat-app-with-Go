@@ -6,6 +6,7 @@ import "time"
 import "slices"
 import "context"
 import "fmt"
+import "strings"
 
 func GetUser(ctx context.Context) (id, name string) {
 	if sesh := session.GetSession(ctx); sesh != nil {
@@ -25,52 +26,78 @@ templ MessageBox(msg *internal.Message, oob bool, edit bool) {
 		}
 		id={ "msg-id-" + msg.Id.Hex() }
 		class={
-			"mt-4 max-w-full flex flex-col",
-			templ.KV("self-end items-end", isAuthor),
-			templ.KV("self-start items-start", !isAuthor),
+			"flex gap-3 py-2 px-4 hover:bg-alpha/30 transition-colors duration-150 group",
+			templ.KV("flex-row-reverse", isAuthor),
 		}
 	>
-		<div class="flex">
-			<div
-				id={ "ctx-menu-invoker-" + msg.Id.Hex() }
-				data-msg-id={ msg.Id.Hex() }
-				onclick="toggleContextMenu(event)"
-				class="px-2 cursor-pointer h-fit"
-			>:</div>
+		<div class="flex-shrink-0">
+			<div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
+				{ strings.ToUpper(string(msg.Author.Name[0])) }
+			</div>
+		</div>
+		<div class="flex flex-col max-w-[70%]">
+			<div class="flex items-center gap-2 mb-1">
+				<span class="text-sm font-semibold text-gray-400">
+					{ msg.Author.Name }
+				</span>
+				<span class="text-xs text-gray-500">{ msg.CreatedAt.Format(time.DateTime) }</span>
+			</div>
 			<div
 				class={
-					"w-fit border-2 bg-slate-400",
-					templ.KV("border-green-500", isAuthor),
-					templ.KV("border-yellow-500", !isAuthor),
+					"rounded-2xl text-sm leading-relaxed relative",
+					templ.KV("px-4 py-2", msg.Type != internal.ImageMessage),
+					templ.KV("p-1.5", msg.Type == internal.ImageMessage),
+					templ.KV("bg-indigo-600 text-white rounded-br-md", isAuthor),
+					templ.KV("bg-beta/50 text-gray-300 rounded-bl-md", !isAuthor),
 				}
 			>
 				if msg.Deleted {
-					Deleted message
+					<span class="italic text-gray-200/70">This message was deleted</span>
 				} else if isHidden {
-					Hidden message
+					<span class="italic text-gray-200/70">Message hidden</span>
 				} else if msg.Type == internal.ImageMessage {
-					<img src={ "/files/" + msg.Content } class="w-auto h-auto max-w-full max-h-96"/>
+					<img src={ "/files/" + msg.Content } class="w-auto h-auto max-w-full max-h-80 rounded-lg"/>
 				} else if edit {
 					<form
 						hx-put={ fmt.Sprintf("/chats/%s/messages/%s/edit", msg.ChatId.Hex(), msg.Id.Hex()) }
 						hx-target={ "#msg-id-" + msg.Id.Hex() }
+						class="flex flex-col gap-2"
 					>
-						<textarea name="msgContent">{ msg.Content }</textarea>
-						<button
-							type="button"
-							hx-get={ fmt.Sprintf("/chats/%s/messages/%s", msg.ChatId.Hex(), msg.Id.Hex()) }
-						>Cancel</button>
-						<button type="submit">Update</button>
+						<textarea name="msgContent" class="w-full bg-alpha text-gray-100 rounded-lg p-2 resize-none border border-gamma focus:border-indigo-500 outline-none">{ msg.Content }</textarea>
+						<div class="flex gap-2">
+							<button
+								type="button"
+								class="px-3 py-1 text-sm bg-gamma hover:bg-gray-600 rounded-md transition-colors"
+								hx-get={ fmt.Sprintf("/chats/%s/messages/%s", msg.ChatId.Hex(), msg.Id.Hex()) }
+							>Cancel</button>
+							<button type="submit" class="px-3 py-1 text-sm bg-indigo-600 hover:bg-indigo-700 rounded-md transition-colors">Update</button>
+						</div>
 					</form>
 				} else {
 					{ msg.Content }
 				}
+				<button
+					type="button"
+					id={ "ctx-menu-invoker-" + msg.Id.Hex() }
+					data-msg-id={ msg.Id.Hex() }
+					onclick="toggleContextMenu(event, true)"
+					class={
+						"absolute top-1 p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:bg-gamma rounded",
+						templ.KV("left-0 -translate-x-full", isAuthor),
+						templ.KV("right-0 translate-x-full", !isAuthor),
+					}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 hover:text-gray-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path>
+					</svg>
+				</button>
 			</div>
+			if isAuthor && msg.Status != "" {
+				<div class="text-xs text-gray-500 mt-1">
+					{ msg.Status }
+				</div>
+			}
 		</div>
-		<div>{ msg.Author.Name } | { msg.CreatedAt.Format(time.DateTime) }</div>
-		if isAuthor {
-			<div>status: { msg.Status }</div>
-		}
 	</li>
 }
 
@@ -80,7 +107,7 @@ templ MessagesList(msgs []*internal.Message, oob bool) {
 		if oob {
 			hx-swap-oob="beforeend"
 		} else {
-			class="grow list-none p-0 flex flex-col justify-end"
+			class="flex-1 overflow-y-auto flex flex-col"
 		}
 	>
 		for _, msg := range msgs {
@@ -90,24 +117,44 @@ templ MessagesList(msgs []*internal.Message, oob bool) {
 }
 
 templ SendBar(chatId string) {
-	<div class="flex gap-4">
-		<input
-			type="file"
-			name="file"
-			class="bg-alpha border-2 border-gamma rounded-sm"
-			hx-post={ fmt.Sprintf("/chats/%s/uploadfile", chatId) }
-			hx-encoding="multipart/form-data"
-			hx-on::after-request="this.value = ''"
-		/>
-		<form
-			class="flex gap-4 grow"
-			hx-post={ fmt.Sprintf("/chats/%s/messages", chatId) }
-			hx-on::after-request="this.reset()"
-			hx-swap="none"
-		>
-			<textarea required name="msg" class="grow resize-none bg-alpha border-2 rounded-sm border-gamma"></textarea>
-			<button type="submit" class="bg-alpha border-2 border-gamma rounded-sm">Send</button>
-		</form>
+	<div class="p-4 bg-beta border-t border-gamma">
+		<div class="flex gap-3 items-end">
+			<label class="flex-shrink-0 cursor-pointer hover:bg-gamma p-2 rounded-full transition-colors group">
+				<input
+					type="file"
+					name="file"
+					class="hidden"
+					hx-post={ fmt.Sprintf("/chats/%s/uploadfile", chatId) }
+					hx-encoding="multipart/form-data"
+					hx-on::after-request="this.value = ''"
+				/>
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-400 group-hover:text-indigo-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+				</svg>
+			</label>
+			<form
+				class="flex-1 flex gap-2"
+				hx-post={ fmt.Sprintf("/chats/%s/messages", chatId) }
+				hx-on::after-request="this.reset()"
+				hx-swap="none"
+			>
+				<textarea
+					required
+					name="msg"
+					placeholder="Type a message..."
+					class="flex-1 bg-gamma text-gray-100 rounded-xl px-4 py-3 resize-none border border-transparent focus:border-indigo-500 outline-none placeholder-gray-500"
+					rows="1"
+				></textarea>
+				<button
+					type="submit"
+					class="flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 p-3 rounded-xl transition-colors"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+					</svg>
+				</button>
+			</form>
+		</div>
 	</div>
 }
 
@@ -116,19 +163,17 @@ templ ChatWindow(chatId string, msgs []*internal.Message) {
 		id="chat-window"
 		hx-swap-oob="innerHTML"
 	>
-		<div class="flex flex-col w-full">
+		<div class="flex flex-col h-full">
 			@ContextMenusWrapper(false) {
 				for _, msg := range msgs {
 					@ContextMenu(msg, false)
 				}
 			}
-			<div id="scroller" class="flex-1 p-2 overflow-y-auto">
+			<div id="scroller" class="flex-1 overflow-y-auto">
 				@MessagesList(msgs, false)
 				<div id="anchor"></div>
 			</div>
-			<div class="h-fit py-4 px-2 bg-beta">
-				@SendBar(chatId)
-			</div>
+			@SendBar(chatId)
 		</div>
 		@msgScroller()
 	</div>
@@ -147,26 +192,56 @@ templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 		</head>
 		<script>
 			htmx.config.allowNestedOobSwaps=false;
+			htmx.on('htmx:beforeSwap', function (evt) {
+				if ([500].includes(evt.detail.xhr.status)) {
+					evt.detail.shouldSwap = true;
+				}
+			});
 		</script>
-		<body class="bg-delta m-0 overflow-y-hidden h-screen">
+		<body class="bg-alpha m-0 overflow-y-hidden h-screen text-gray-100">
 			<div
-				class="flex justify-center h-full"
+				class="flex h-full"
 				hx-ext="ws"
 				ws-connect="/chatroom"
 			>
-				<div>
-					@ChatList(chts)
-					<form hx-post="/chats" hx-on::after-request="this.reset()" hx-swap="none">
-						<input name="chatName"/>
-						<button type="submit">Add</button>
-					</form>
+				<div class="w-72 bg-beta flex flex-col border-r border-gamma">
+					<div class="p-4 border-b border-gamma">
+						<h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Chats</h1>
+					</div>
+					<div class="flex-1 overflow-y-auto">
+						@ChatList(chts)
+					</div>
+					<div class="p-4 border-t border-gamma">
+						<form hx-post="/chats" hx-on::after-request="this.reset()" hx-swap="none" class="flex gap-2">
+							<input
+								name="chatName"
+								placeholder="New chat name..."
+								class="flex-1 bg-gamma rounded-lg px-3 py-2 text-sm border border-transparent focus:border-indigo-500 outline-none placeholder-gray-500"
+							/>
+							<button
+								type="submit"
+								class="bg-indigo-600 hover:bg-indigo-700 p-2 rounded-lg transition-colors"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+								</svg>
+							</button>
+						</form>
+					</div>
 				</div>
 				@ctxMenuScripts()
 				<div
 					id="chat-window"
-					class="max-w-screen-md w-full bg-gamma h-full flex"
+					class="flex-1 bg-alpha flex flex-col"
 				>
-					Choose chat
+					<div class="flex-1 flex items-center justify-center text-gray-500">
+						<div class="text-center">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto mb-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+							</svg>
+							<p>Select a chat to start messaging</p>
+						</div>
+					</div>
 				</div>
 			</div>
 		</body>
@@ -176,8 +251,8 @@ templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 templ ContextMenusWrapper(oob bool) {
 	<div
 		id="ctxMenusWrapper"
-		onclick="toggleContextMenu()"
-		class="hidden absolute z-10 top-0 left-0 h-screen w-screen"
+		onclick="toggleContextMenu(event, false)"
+		class="hidden fixed inset-0 z-40"
 		if oob {
 			hx-swap-oob="beforeend"
 		}
@@ -193,8 +268,8 @@ templ ContextMenu(msg *internal.Message, oob bool) {
 	<ul
 		id={ "ctx-menu-" + msg.Id.Hex() }
 		data-msg-id={ msg.Id.Hex() }
-		class="ctx-menu hidden relative bg-alpha w-fit"
-		onclick="toggleContextMenu()"
+		class="ctx-menu hidden fixed z-50 bg-gamma rounded-lg shadow-xl border border-gray-700 py-1 min-w-[140px]"
+		onclick="toggleContextMenu(event, false)"
 		if oob {
 			hx-swap-oob="true"
 		}
@@ -204,34 +279,39 @@ templ ContextMenu(msg *internal.Message, oob bool) {
 				hx-swap="none"
 				hx-get={ fmt.Sprintf("/chats/%s/messages/%s/edit", msg.ChatId.Hex(), msg.Id.Hex()) }
 				hx-trigger="click"
-			>edit</li>
+				class="px-4 py-2 hover:bg-beta cursor-pointer text-sm text-gray-200 transition-colors"
+			>Edit</li>
 		}
 		if true {
 			<li
 				hx-swap="none"
 				hx-put={ fmt.Sprintf("/chats/%s/messages/%s/pin", msg.ChatId.Hex(), msg.Id.Hex()) }
 				hx-trigger="click"
-			>pin</li>
+				class="px-4 py-2 hover:bg-beta cursor-pointer text-sm text-gray-200 transition-colors"
+			>Pin</li>
 		}
 		if isHidden {
 			<li
 				hx-swap="none"
 				hx-put={ fmt.Sprintf("/chats/%s/messages/%s/show", msg.ChatId.Hex(), msg.Id.Hex()) }
 				hx-trigger="click"
-			>show</li>
+				class="px-4 py-2 hover:bg-beta cursor-pointer text-sm text-gray-200 transition-colors"
+			>Show</li>
 		} else {
 			<li
 				hx-swap="none"
 				hx-put={ fmt.Sprintf("/chats/%s/messages/%s/hide", msg.ChatId.Hex(), msg.Id.Hex()) }
 				hx-trigger="click"
-			>hide</li>
+				class="px-4 py-2 hover:bg-beta cursor-pointer text-sm text-gray-200 transition-colors"
+			>Hide</li>
 		}
 		if isAuthor && !msg.Deleted {
 			<li
 				hx-swap="none"
 				hx-delete={ fmt.Sprintf("/chats/%s/messages/%s", msg.ChatId.Hex(), msg.Id.Hex()) }
 				hx-trigger="click"
-			>delete</li>
+				class="px-4 py-2 hover:bg-red-900/50 cursor-pointer text-sm text-red-400 transition-colors"
+			>Delete</li>
 		}
 	</ul>
 }
@@ -240,6 +320,7 @@ templ ChatList(chts []*internal.Chat) {
 	<ul
 		id="chat-list"
 		hx-swap-oob="beforeend"
+		class="flex flex-col"
 	>
 		for _, cht := range chts {
 			@ChatListItem(cht, "")
@@ -252,51 +333,59 @@ templ ChatListItem(cht *internal.Chat, status string) {
 		id={ "chat-id-" + cht.Id }
 		hx-swap-oob
 		class={
-			"chat-item",
-			templ.KV("bg-active", status == "active"),
-			templ.KV("bg-new-message", status == "newMessage"),
+			"chat-item px-4 py-3 hover:bg-gamma/50 cursor-pointer transition-colors border-l-2 border-transparent",
+			templ.KV("bg-gamma/70 border-indigo-500", status == "active"),
+			templ.KV("border-green-500", status == "newMessage"),
 		}
 	>
 		<button
 			type="button"
-			class="w-full text-start"
+			class="w-full text-start flex items-center gap-3"
 			if status != "active" {
 				hx-vals={ `{"msgType": "changeChat", "chatId": "` + cht.Id + `"}` }
 				ws-send
 			}
-		>{ cht.Name }</button>
+		>
+			<div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold">
+				{ strings.ToUpper(string(cht.Name[0])) }
+			</div>
+			<span class="font-medium text-gray-200 truncate">{ cht.Name }</span>
+		</button>
 	</li>
 }
 
 templ ctxMenuScripts() {
 	<script>
-		function handleSetPosition(elm, relativeTo) {
+		function handleSetPosition(elm, relativeTo, ctxMenu) {
 			const rect = relativeTo.getBoundingClientRect();
+			const isAuthor = relativeTo.classList.contains("left-0") || relativeTo.classList.contains("-translate-x-full");
 
-			elm.style.top = (rect.top || rect.y) + "px";
-			elm.style.left = (rect.left || rect.x) + "px";
+			if (isAuthor) {
+				elm.style.top = (rect.top || rect.y) + "px";
+				elm.style.left = ((rect.left || rect.x) - ctxMenu.offsetWidth) + "px";
+			} else {
+				elm.style.top = (rect.top || rect.y) + "px";
+				elm.style.left = ((rect.left || rect.x) + rect.width) + "px";
+			}
 		}
 
-		function toggleContextMenu(event) {
+		function toggleContextMenu(event, show) {
+			document.querySelectorAll(".ctx-menu:not(.hidden)")?.forEach((ctxMenu) => {
+				ctxMenu.classList.toggle("hidden", true);
+			});
+
 			const ctxMenusWrapper = document.getElementById("ctxMenusWrapper");
+			ctxMenusWrapper.classList.toggle("hidden", true);
+			if (!show) return;
 
-			const msgId = event?.target.getAttribute("data-msg-id");
-
-			if (!msgId) {
-				ctxMenusWrapper.classList.toggle("hidden", true);
-				document.querySelectorAll(".ctx-menu:not(.hidden)")?.forEach((ctxMenu) => {
-					ctxMenu.classList.toggle("hidden", true);
-				});
-
-				return;
-			}
+			const msgId = event?.currentTarget.getAttribute("data-msg-id");
+			if (!msgId) return;
 
 			const ctxMenu = document.getElementById(`ctx-menu-${msgId}`);
-
-			ctxMenusWrapper.classList.toggle("hidden", false);
 			ctxMenu.classList.toggle("hidden", false);
+			ctxMenusWrapper.classList.toggle("hidden", false);
 
-			handleSetPosition(ctxMenu, event.target);
+			handleSetPosition(ctxMenu, event.currentTarget, ctxMenu);
 		}
 
 		window.addEventListener("resize", () => {
@@ -306,7 +395,7 @@ templ ctxMenuScripts() {
 			const msgId = ctxMenu.getAttribute("data-msg-id")
 			const invokedFrom = document.getElementById("ctx-menu-invoker-" + msgId);
 
-			handleSetPosition(ctxMenu, invokedFrom);
+			handleSetPosition(ctxMenu, invokedFrom, ctxMenu);
 		});
 	</script>
 }
