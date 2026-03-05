@@ -81,6 +81,11 @@ func (h *handler) handle(d *amqp.Delivery, pub *rabbitmq.Publisher) error {
 	}
 
 	d.Ack(false)
+
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -137,6 +142,10 @@ func (h *handler) broadcast(d *amqp.Delivery, pub *rabbitmq.Publisher, event int
 			ContentType: "text/plain",
 			Body:        body,
 		})
+
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

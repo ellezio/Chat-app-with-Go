@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/ellezio/Chat-app-with-Go/internal/log"
@@ -35,7 +36,6 @@ type Consumer struct {
 }
 
 func (c *Consumer) setup(conn *amqp.Connection) error {
-	log.DefaultContextLogger.Info("Creating consumer channel")
 	if conn == nil {
 		return fmt.Errorf("consumer: failed to open a channel: connection is not configured")
 	}
@@ -55,6 +55,7 @@ func (c *Consumer) setup(conn *amqp.Connection) error {
 	}
 
 	// if nil the exchange is the default one
+	// and default exchange cannot be bind
 	if c.exchange != nil {
 		err = ch.ExchangeDeclare(c.exchange.Name, c.exchange.Kind, c.exchange.Durable, c.exchange.AutoDelete, c.exchange.Internal, c.exchange.NoWait, c.exchange.Args)
 		if err != nil {
@@ -77,25 +78,27 @@ func (c *Consumer) setup(conn *amqp.Connection) error {
 		for d := range queueChan {
 			c.Consume(d)
 		}
-		log.DefaultContextLogger.Info("Closing consumer channel")
 	}()
 
 	return nil
 }
 
 type Publisher struct {
+	mu        sync.Mutex
 	ch        *amqp.Channel
 	exchanges []Exchange
 }
 
 func (p *Publisher) Publish(exchangeName string, routingKey string, msg amqp.Publishing) error {
-	log.DefaultContextLogger.Info("sending message")
-	err := p.ch.Publish(exchangeName, routingKey, false, false, msg)
-	log.DefaultContextLogger.Info("message sent", slog.Any("error", err))
-	return err
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.ch.Publish(exchangeName, routingKey, false, false, msg)
 }
 
 func (p *Publisher) setup(conn *amqp.Connection) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if conn == nil {
 		return fmt.Errorf("publisher: failed to open a channel: connection is not configured")
 	}
@@ -132,6 +135,9 @@ func Dial(ctx context.Context, connectionString string) (*Client, error) {
 	}
 
 	go func() {
+		// Reconnecting loop
+		// When connection to rabbit closed not gracefully it tries to reconnect with 1 sec delay.
+		// And recreates consumers and publishers.
 		for {
 			reason, ok := <-c.conn.NotifyClose(make(chan *amqp.Error))
 			if !ok {
@@ -152,12 +158,16 @@ func Dial(ctx context.Context, connectionString string) (*Client, error) {
 				logger.Error("rabbitmq: reconnection failed", slog.Any("error", err))
 			}
 
+			// NOTE
+			// The code below has hole.
+			// When the pub/sub cannot create channel it doesn't tries again until connection is down.
+			// It's not so important because errors in channel arais from invalid connfiguration they do not just close like connection.
+
 			logger.Info("rabbitmq: resetup publisher")
 			for _, pub := range c.publishers {
 				// there is no need for closing a channel because it will be automatically closed on connection close
 				if err := pub.setup(c.conn); err != nil {
 					logger.Error("rabbitmq: failed to setup publisher", slog.Any("error", err))
-					break
 				}
 			}
 
@@ -165,7 +175,6 @@ func Dial(ctx context.Context, connectionString string) (*Client, error) {
 			for _, con := range c.consumers {
 				if err := con.setup(c.conn); err != nil {
 					logger.Error("rabbitmq: failed to setup consumer", slog.Any("error", err))
-					break
 				}
 			}
 
