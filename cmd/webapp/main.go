@@ -30,6 +30,7 @@ func setupMux(chatHandler *ChatHandler) http.Handler {
 
 	loginMux := http.NewServeMux()
 	loginMux.HandleFunc("/", handleError(chatHandler.Homepage))
+	loginMux.HandleFunc("GET /chat/{chatId}", handleError(chatHandler.ChatPage))
 	loginMux.HandleFunc("GET /chatroom", handleError(chatHandler.Chatroom))
 	loginMux.HandleFunc("POST /chats", handleError(chatHandler.CreateChat))
 	loginMux.HandleFunc("POST /chats/{chatId}/uploadfile", handleError(chatHandler.UploadFile))

@@ -45,7 +45,17 @@ func (h *ChatHandler) Homepage(w http.ResponseWriter, r *http.Request) error {
 	chts := h.hub.GetChats()
 
 	var bb bytes.Buffer
-	components.Homepage(chts, nil).Render(r.Context(), &bb)
+	components.Homepage(chts, "").Render(r.Context(), &bb)
+	bb.WriteTo(w)
+	return nil
+}
+
+func (h *ChatHandler) ChatPage(w http.ResponseWriter, r *http.Request) error {
+	id := r.PathValue("chatId")
+
+	var bb bytes.Buffer
+	chts := h.hub.GetChats()
+	components.Homepage(chts, id).Render(r.Context(), &bb)
 	bb.WriteTo(w)
 	return nil
 }
@@ -201,6 +211,11 @@ func (h *ChatHandler) Chatroom(w http.ResponseWriter, r *http.Request) error {
 
 		switch payload.Type {
 		case "changeChat":
+			// ignore all messages with empty chat
+			if chatId == "" {
+				continue
+			}
+
 			cht, prevCht, err := h.hub.ConnectClient(chatId, client)
 			if err != nil {
 				logger.Error("Failed to connect client", slog.Any("error", err))
@@ -374,16 +389,6 @@ func (h *ChatHandler) CreateChat(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-func NewHttpClient(conn *websocket.Conn, sessionId session.SessionId, logger *slog.Logger) *HttpClient {
-	return &HttpClient{
-		id:        sessionId.String(),
-		SessionId: sessionId,
-		conn:      conn,
-		connMux:   sync.Mutex{},
-		logger:    logger,
-	}
-}
-
 type HttpClient struct {
 	id        string
 	SessionId session.SessionId
@@ -392,6 +397,16 @@ type HttpClient struct {
 	connMux sync.Mutex
 
 	logger *slog.Logger
+}
+
+func NewHttpClient(conn *websocket.Conn, sessionId session.SessionId, logger *slog.Logger) *HttpClient {
+	return &HttpClient{
+		id:        sessionId.String(),
+		SessionId: sessionId,
+		conn:      conn,
+		connMux:   sync.Mutex{},
+		logger:    logger,
+	}
 }
 
 func (c *HttpClient) GetId() string { return c.id }

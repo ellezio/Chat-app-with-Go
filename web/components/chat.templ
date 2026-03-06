@@ -175,11 +175,11 @@ templ ChatWindow(chatId string, msgs []*internal.Message) {
 			</div>
 			@SendBar(chatId)
 		</div>
-		@msgScroller()
+		<script>msgScroller()</script>
 	</div>
 }
 
-templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
+templ Homepage(chts []*internal.Chat, chatId string) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
@@ -188,6 +188,7 @@ templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 			<link href="/css/output.css" rel="stylesheet"/>
 			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.6/dist/htmx.min.js" integrity="sha384-Akqfrbj/HpNVo8k11SXBb6TlBWmXXlYQrCSqEWmyKJe+hDm3Z/B2WVG4smwBkRVm" crossorigin="anonymous"></script>
 			<script src="https://cdn.jsdelivr.net/npm/htmx-ext-ws@2.0.2" integrity="sha384-0RHpPqZ4QLJXG/ALtieEL/G+NuAI98LYSkT9s6FgciveUhAdo/6wab5NU1tm2Bxs" crossorigin="anonymous"></script>
+			<script src="/js/chat.js"></script>
 			<title>Chat page</title>
 		</head>
 		<script>
@@ -197,13 +198,22 @@ templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 					evt.detail.shouldSwap = true;
 				}
 			});
+			chatId = {{ chatId }}
 		</script>
 		<body class="bg-alpha m-0 overflow-y-hidden h-screen text-gray-100">
 			<div
 				class="flex h-full"
 				hx-ext="ws"
 				ws-connect="/chatroom"
+				hx-on::ws-open={ templ.JSFuncCall("htmx.trigger", "#init-message", "connected") }
 			>
+				<div
+					id="init-message"
+					hx-trigger="connected"
+					hx-vals="js:{msgType: 'changeChat', chatId: window.chatId}"
+					hx-on::ws-before-send="if (!window.chatId) event.preventDefault()"
+					ws-send
+				></div>
 				<div class="w-72 bg-beta flex flex-col border-r border-gamma">
 					<div class="p-4 border-b border-gamma">
 						<h1 class="text-xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">Chats</h1>
@@ -229,7 +239,6 @@ templ Homepage(chts []*internal.Chat, msgs []*internal.Message) {
 						</form>
 					</div>
 				</div>
-				@ctxMenuScripts()
 				<div
 					id="chat-window"
 					class="flex-1 bg-alpha flex flex-col"
@@ -344,6 +353,7 @@ templ ChatListItem(cht *internal.Chat, status string) {
 			if status != "active" {
 				hx-vals={ `{"msgType": "changeChat", "chatId": "` + cht.Id + `"}` }
 				ws-send
+				onclick={ templ.JSFuncCall("selectChat", cht.Id) }
 			}
 		>
 			<div class="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-semibold">
@@ -352,77 +362,4 @@ templ ChatListItem(cht *internal.Chat, status string) {
 			<span class="font-medium text-gray-200 truncate">{ cht.Name }</span>
 		</button>
 	</li>
-}
-
-templ ctxMenuScripts() {
-	<script>
-		function handleSetPosition(elm, relativeTo, ctxMenu) {
-			const rect = relativeTo.getBoundingClientRect();
-			const isAuthor = relativeTo.classList.contains("left-0") || relativeTo.classList.contains("-translate-x-full");
-
-			if (isAuthor) {
-				elm.style.top = (rect.top || rect.y) + "px";
-				elm.style.left = ((rect.left || rect.x) - ctxMenu.offsetWidth) + "px";
-			} else {
-				elm.style.top = (rect.top || rect.y) + "px";
-				elm.style.left = ((rect.left || rect.x) + rect.width) + "px";
-			}
-		}
-
-		function toggleContextMenu(event, show) {
-			document.querySelectorAll(".ctx-menu:not(.hidden)")?.forEach((ctxMenu) => {
-				ctxMenu.classList.toggle("hidden", true);
-			});
-
-			const ctxMenusWrapper = document.getElementById("ctxMenusWrapper");
-			ctxMenusWrapper.classList.toggle("hidden", true);
-			if (!show) return;
-
-			const msgId = event?.currentTarget.getAttribute("data-msg-id");
-			if (!msgId) return;
-
-			const ctxMenu = document.getElementById(`ctx-menu-${msgId}`);
-			ctxMenu.classList.toggle("hidden", false);
-			ctxMenusWrapper.classList.toggle("hidden", false);
-
-			handleSetPosition(ctxMenu, event.currentTarget, ctxMenu);
-		}
-
-		window.addEventListener("resize", () => {
-			const ctxMenu = document.querySelector(".ctx-menu:not(.hidden)");
-			if (!ctxMenu) return;
-
-			const msgId = ctxMenu.getAttribute("data-msg-id")
-			const invokedFrom = document.getElementById("ctx-menu-invoker-" + msgId);
-
-			handleSetPosition(ctxMenu, invokedFrom, ctxMenu);
-		});
-	</script>
-}
-
-script msgScroller() {
-	const elt = document.getElementById("scroller")
-	const msgsList = document.getElementById("msgs-list")
-	const sharedState = { 
-		anchored: true,
-		autoScroll: false,
-	}
-
-	elt.addEventListener("scroll", (evt) => {
-		if (!sharedState.autoScroll) {
-			sharedState.anchored = evt.target.scrollTop >= (evt.target.scrollHeight - evt.target.offsetHeight - 10)
-		}
-		sharedState.autoScroll = false
-	})
-
-	const observer = new ResizeObserver((entries) => {
-		for (const entry of entries) {
-			if (sharedState.anchored) {
-				elt.scrollTop = elt.scrollHeight - elt.offsetHeight
-				sharedState.autoScroll = true
-			}
-		}
-	})
-
-	observer.observe(msgsList)
 }
