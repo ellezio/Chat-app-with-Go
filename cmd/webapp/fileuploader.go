@@ -1,9 +1,7 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -38,25 +36,36 @@ func NewFileUploader(host, port string) *FileUploader {
 //
 // Returns the uploaded file's name
 func (fu *FileUploader) Upload(ctx context.Context, fname string, file io.Reader) (string, error) {
-	body := &bytes.Buffer{}
+	pr, pw := io.Pipe()
+	wr := multipart.NewWriter(pw)
 
-	wr := multipart.NewWriter(body)
-	fpartwr, err := wr.CreateFormFile("file", fname)
-	if err != nil {
-		wr.Close()
-		return "", errors.Join(errors.New("can't create form file"), err)
-	}
-	_, err = io.Copy(fpartwr, file)
-	if err != nil {
-		wr.Close()
-		return "", errors.Join(errors.New("failed to copy file to new request body"), err)
-	}
-	wr.Close()
+	go func() {
+
+		fpartwr, err := wr.CreateFormFile("file", fname)
+		if err != nil {
+			pw.CloseWithError(fmt.Errorf("creating form file: %w", err))
+			return
+		}
+
+		_, err = io.Copy(fpartwr, file)
+		if err != nil {
+			pw.CloseWithError(fmt.Errorf("copying file to multipart: %w", err))
+			return
+		}
+
+		if err := wr.Close(); err != nil {
+			pw.CloseWithError(fmt.Errorf("closing multipart writer: %w", err))
+			return
+		}
+
+		pw.Close()
+	}()
 
 	url := url.URL{Scheme: "http", Host: net.JoinHostPort(fu.host, fu.port)}
-	req, err := http.NewRequestWithContext(ctx, "POST", url.String(), body)
+	req, err := http.NewRequestWithContext(ctx, "POST", url.String(), pr)
 	if err != nil {
-		return "", errors.Join(errors.New("failed to create request"), err)
+		pr.CloseWithError(err)
+		return "", fmt.Errorf("creating request: %w", err)
 	}
 
 	if cid := log.CorrelationIdCtx(ctx); cid != "" {
@@ -67,7 +76,7 @@ func (fu *FileUploader) Upload(ctx context.Context, fname string, file io.Reader
 
 	res, err := fu.client.Do(req)
 	if err != nil {
-		return "", errors.Join(errors.New("error while sending request"), err)
+		return "", fmt.Errorf("sending request: %w", err)
 	}
 	defer res.Body.Close()
 
@@ -78,7 +87,7 @@ func (fu *FileUploader) Upload(ctx context.Context, fname string, file io.Reader
 
 	savedFilename, err := io.ReadAll(res.Body)
 	if err != nil {
-		return "", errors.Join(errors.New("error while reading response body"), err)
+		return "", fmt.Errorf("reading response body: %w", err)
 	}
 
 	return string(savedFilename), nil

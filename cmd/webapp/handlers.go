@@ -53,6 +53,11 @@ func (h *ChatHandler) Homepage(w http.ResponseWriter, r *http.Request) error {
 func (h *ChatHandler) ChatPage(w http.ResponseWriter, r *http.Request) error {
 	id := r.PathValue("chatId")
 
+	if cht := h.hub.GetChat(id); cht == nil {
+		http.Redirect(w, r, "/", 302)
+		return nil
+	}
+
 	var bb bytes.Buffer
 	chts := h.hub.GetChats()
 	components.Homepage(chts, id).Render(r.Context(), &bb)

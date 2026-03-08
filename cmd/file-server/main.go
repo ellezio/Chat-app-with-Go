@@ -8,14 +8,19 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ellezio/Chat-app-with-Go/internal/log"
 )
+
+var supportedFileFormat = []string{
+	"jpeg",
+	"png",
+}
 
 var mu sync.Mutex
 var seqNum int64
@@ -35,29 +40,18 @@ func parseFlags() error {
 	if cfg.dir == "" {
 		return errors.New("the -dir flag is required")
 	} else {
-		cfg.dir = filepath.ToSlash(filepath.Clean(cfg.dir))
+		cfg.dir = filepath.Clean(cfg.dir)
 	}
 	return nil
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {
+	logger := log.Ctx(r.Context())
+
 	file, _, err := r.FormFile("file")
 	if err != nil {
-		fmt.Println("failed to parse file, err: ", err)
+		logger.Error("failed to parse file", slog.Any("error", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	buf := make([]byte, 512)
-	if _, err := file.Read(buf); err != nil {
-		fmt.Println("failed to read file, err: ", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	mime := http.DetectContentType(buf)
-	mimeParts := strings.SplitN(mime, "/", 2)
-	if len(mimeParts) != 2 || mimeParts[0] == "image/" {
-		http.Error(w, "invalid content type - only image/* are supported", http.StatusBadRequest)
 		return
 	}
 
@@ -66,27 +60,54 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		r.MultipartForm.RemoveAll()
 	}()
 
-	filename := generateFilename() + "." + mimeParts[1]
-	filepath := path.Join(cfg.dir, filename)
-	dst, err := os.Create(filepath)
-	if err != nil {
-		fmt.Println("failed to create file, err: ", err)
+	buf := make([]byte, 512)
+	if _, err := io.ReadFull(file, buf); err != nil {
+		logger.Error("failed to read file", slog.Any("error", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	file.Seek(0, io.SeekStart)
+	mediatype := http.DetectContentType(buf)
+	mediaParts := strings.SplitN(mediatype, "/", 2)
+	if len(mediaParts) != 2 || mediaParts[0] != "image" {
+		http.Error(w, "invalid media type - only image are supported", http.StatusBadRequest)
+		return
+	}
+
+	if !slices.Contains(supportedFileFormat, mediaParts[1]) {
+		http.Error(w, "invalid media type - only image/jpeg and image/png are supported", http.StatusBadRequest)
+		return
+	}
+
+	fname := generateFilename() + "." + mediaParts[1]
+	fpath := filepath.Join(cfg.dir, fname)
+	dst, err := os.Create(fpath)
+	if err != nil {
+		logger.Error("failed to create file", slog.Any("error", err))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		dst.Close()
+		os.Remove(fpath)
+		logger.Error("failed to seek file", slog.Any("error", err))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	_, err = io.Copy(dst, file)
 	dst.Close()
 	if err != nil {
-		fmt.Println("failed to copy file, err: ", err)
+		os.Remove(fpath)
+		logger.Error("failed to copy file", slog.Any("error", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(filename))
+	w.Write([]byte(fname))
 }
 
 func generateFilename() string {
@@ -101,7 +122,7 @@ func generateFilename() string {
 	seqNum++
 	mu.Unlock()
 
-	return fmt.Sprintf("%d%d", us, seq)
+	return fmt.Sprintf("%d_%d", us, seq)
 }
 
 func main() {
@@ -122,8 +143,18 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("GET /", http.FileServer(http.Dir(cfg.dir)))
 	mux.HandleFunc("POST /", handleUpload)
+	mux.Handle("GET /{filename}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fname := r.PathValue("filename")
+		// only accept file name not a path
+		if fname != filepath.Base(fname) {
+			http.Error(w, "invalid filename", http.StatusBadRequest)
+			return
+		}
+
+		fpath := filepath.Join(cfg.dir, fname)
+		http.ServeFile(w, r, fpath)
+	}))
 
 	if err := http.ListenAndServe(":3001", log.Middleware(mux, logger)); err != nil {
 		panic(err)
